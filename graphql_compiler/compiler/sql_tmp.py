@@ -89,7 +89,7 @@ def emit_sql(ir_blocks, query_metadata_table, compiler_metadata):
                 isouter=block.optional)
         elif isinstance(block, blocks.Filter):
             # TODO check it works for filter inside optional.
-            filters.append(block.predicate.to_sql(current_alias))
+            filters.append(block.predicate.to_sql(alias_at_location, current_alias))
         else:
             raise NotImplementedError(u'{}'.format(block))
 
@@ -97,18 +97,15 @@ def emit_sql(ir_blocks, query_metadata_table, compiler_metadata):
     for block in global_operations:
         if isinstance(block, blocks.ConstructResult):
             for output_name, field in six.iteritems(block.fields):
-                # import pdb; pdb.set_trace()
 
                 # HACK for outputs in optionals
                 if isinstance(field, expressions.TernaryConditional):
                     if isinstance(field.predicate, expressions.ContextFieldExistence):
                         field = field.if_true
 
-                # HACK this should be done inside expression.to_sql
-                if field.location.field.startswith('@'):
+                if isinstance(field, expressions.OutputContextField):
+                    outputs.append(field.to_sql(alias_at_location, current_alias).label(output_name))
+                else:
                     raise NotImplementedError()
-
-                table = alias_at_location[field.location.at_vertex().query_path]
-                outputs.append(table.c.get(field.location.field).label(output_name))
 
     return sqlalchemy.select(outputs).select_from(from_clause).where(sqlalchemy.and_(*filters))
