@@ -121,7 +121,7 @@ class Literal(Expression):
     to_gremlin = _to_output_code
     to_match = _to_output_code
 
-    def to_sql(self, current_alias):
+    def to_sql(self, aliases, current_alias):
         return self.value
 
 
@@ -220,7 +220,7 @@ class Variable(Expression):
         else:
             return six.text_type(self.variable_name)
 
-    def to_sql(self, current_alias):
+    def to_sql(self, aliases, current_alias):
         self.validate()
 
         from sqlalchemy import bindparam
@@ -289,7 +289,7 @@ class LocalField(Expression):
         else:
             return u'{}.{}'.format(local_object_name, self.field_name)
 
-    def to_sql(self, current_alias):
+    def to_sql(self, aliases, current_alias):
         self.validate()
 
         if isinstance(self.field_type, GraphQLList):
@@ -348,6 +348,9 @@ class GlobalContextField(Expression):
         """Not implemented, should not be used."""
         raise AssertionError(u'GlobalContextField is only used for the WHERE statement in '
                              u'MATCH. This function should not be called.')
+
+    def to_sql(self, aliases, current_alias):
+        raise NotIMplementedError()
 
 
 class ContextField(Expression):
@@ -415,8 +418,7 @@ class ContextField(Expression):
 
         return template.format(mark_name=mark_name, field_name=field_name)
 
-    def to_sql(self, current_alias):
-        # TODO do I have enough info?
+    def to_sql(self, aliases, current_alias):
         raise NotImplementedError()
 
 
@@ -506,6 +508,16 @@ class OutputContextField(Expression):
 
         return template.format(mark_name=mark_name, field_name=field_name,
                                format=format_value)
+
+    def to_sql(self, aliases, current_alias):
+        if isinstance(self.field_type, GraphQLList):
+            raise NotImplementedError(u'We dont support lists yet')
+
+        if '@' in self.location.field:
+            raise NotImplementedError(u'We dont support __typename yet')
+
+        alias = aliases[self.location.at_vertex().query_path]
+        return alias.c.get(self.location.field)
 
     def __eq__(self, other):
         """Return True if the given object is equal to this one, and False otherwise."""
@@ -912,7 +924,7 @@ class BinaryComposition(Expression):
                                   left=self.left.to_gremlin(),
                                   right=self.right.to_gremlin())
 
-    def to_sql(self, current_alias):
+    def to_sql(self, aliases, current_alias):
         self.validate()
 
         import operator
@@ -932,8 +944,8 @@ class BinaryComposition(Expression):
             u'intersects': lambda x, y: raise_(NotImplementedError()),
         }
         return translation_table[self.operator](
-            self.left.to_sql(current_alias),
-            self.right.to_sql(current_alias),
+            self.left.to_sql(aliases, current_alias),
+            self.right.to_sql(aliases, current_alias),
         )
 
 
