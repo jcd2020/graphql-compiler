@@ -716,7 +716,7 @@ class CompilerTests(unittest.TestCase):
                 [Animals].schema_1.[Animal] AS [Animal_1]
                 LEFT OUTER JOIN [Animals].schema_1.[Animal] AS [Animal_2]
                     ON [Animal_1].parent = [Animal_2].uuid
-            WHERE [Animal_2].name = :name
+            WHERE [Animal_2].name = :name OR [Animal_2].name IS NULL
         '''
 
         check_test_data(self, test_data, expected_match, expected_gremlin, expected_sql)
