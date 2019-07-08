@@ -328,9 +328,9 @@ def print_mssql_query(statement):
                                                       .format(value, str))
                 # This SQLAlchemy type does not have a python_type implementation.
                 elif isinstance(bindparam.type, mssql.BIT):
-                    if not isinstance(value, int):
+                    if not isinstance(value, bool):
                         raise GraphQLCompilationError('Param {} is not of the expected type {}.'
-                                                      .format(value, int))
+                                                      .format(value, bool))
                 elif not isinstance(value, bindparam.type.python_object):
                     raise GraphQLCompilationError('Param {} is not of the expected type {}.'
                           .format(value, str(bindparam.type.python_object)))
