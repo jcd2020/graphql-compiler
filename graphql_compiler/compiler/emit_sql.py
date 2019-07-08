@@ -1,18 +1,18 @@
 # Copyright 2018-present Kensho Technologies, LLC.
 """Transform a SqlNode tree into an executable SQLAlchemy query."""
 from collections import namedtuple
+from datetime import date, datetime
+from decimal import Decimal
 
 from sqlalchemy import Column, bindparam, select
+import sqlalchemy.dialects.mssql as mssql
 from sqlalchemy.sql import expression as sql_expressions
 from sqlalchemy.sql.elements import BindParameter, and_
-from sqlalchemy.dialects.mssql import UNIQUEIDENTIFIER, BIT
-from .helpers import GraphQLCompilationError
-from decimal import Decimal
-from datetime import date, datetime
 
 from . import sql_context_helpers
 from ..compiler import expressions
 from ..compiler.ir_lowering_sql import constants
+from .helpers import GraphQLCompilationError
 
 
 # The compilation context holds state that changes during compilation as the tree is traversed
@@ -290,14 +290,14 @@ def _transform_local_field_to_expression(expression, node, context):
     return column
 
 
-def print_query(statement, dialect):
+def print_mssql_query(statement):
     """
     Print a query, with values filled in for debugging purposes *only* for security, you should
     always separate queries from their values. Please also note that this function is quite slow.
     Inspiration from:
     https://stackoverflow.com/questions/5631078/sqlalchemy-print-the-actual-query/5698357
     """
-    compiler = statement._compiler(dialect)
+    compiler = statement._compiler(mssql.dialect())
     class LiteralCompiler(compiler.__class__):
         def visit_bindparam(
                 self, bindparam, within_columns_clause=False,
@@ -322,12 +322,12 @@ def print_query(statement, dialect):
                                                               str(bindparam.type.python_object)))
             else:
                 # This SQLAlchemy type does not have a python_type implementation.
-                if isinstance(bindparam.type, UNIQUEIDENTIFIER):
+                if isinstance(bindparam.type, mssql.UNIQUEIDENTIFIER):
                     if not isinstance(value, str):
                         raise GraphQLCompilationError('Param {} is not of the expected type {}.'
                                                       .format(value, str))
                 # This SQLAlchemy type does not have a python_type implementation.
-                elif isinstance(bindparam.type, BIT):
+                elif isinstance(bindparam.type, mssql.BIT):
                     if not isinstance(value, int):
                         raise GraphQLCompilationError('Param {} is not of the expected type {}.'
                                                       .format(value, int))
@@ -356,5 +356,5 @@ def print_query(statement, dialect):
                         value.year, value.month, value.day)
             return super(LiteralCompiler, self).render_literal_value(value, type_)
 
-    compiler = LiteralCompiler(dialect, statement)
+    compiler = LiteralCompiler(mssql.dialect(), statement)
     return str(compiler.process(statement))

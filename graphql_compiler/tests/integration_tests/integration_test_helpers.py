@@ -4,7 +4,7 @@ from decimal import Decimal
 import six
 
 from ... import graphql_to_match, graphql_to_sql
-from ...compiler.emit_sql import print_query
+from ...compiler.emit_sql import print_mssql_query
 from sqlalchemy.dialects import mssql
 
 
@@ -60,7 +60,7 @@ def compile_and_run_sql_query(schema, graphql_query, parameters, engine, sql_met
     results_with_sqlalchemy_clause = []
     connection = engine.connect()
     with connection.begin() as trans:
-        for result in connection.execute(print_query(query.params(parameters), mssql.dialect())):
+        for result in connection.execute(print_mssql_query(query.params(parameters))):
             results_with_query_string.append(dict(result))
         for result in connection.execute(query, parameters):
             results_with_sqlalchemy_clause.append(dict(result))
