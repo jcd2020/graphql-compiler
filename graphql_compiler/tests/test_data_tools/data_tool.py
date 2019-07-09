@@ -112,6 +112,9 @@ def generate_sql_integration_data(sql_test_backends):
             datetime.date(2000, 4, 4),
         ),
     )
+    event_rows = (
+
+    )
     table_values = [
         (tables['Animal'], animal_rows),
     ]
@@ -128,10 +131,11 @@ def generate_sql_integration_data(sql_test_backends):
 def get_animal_schema_sql_metadata():
     """Return Dict[str, Table] table lookup, and associated metadata, for the Animal test schema."""
     metadata = MetaData()
+    from sqlalchemy.dialects.mssql.base import UNIQUEIDENTIFIER
     animal_table = Table(
         'animal',
         metadata,
-        Column('uuid', String(36), primary_key=True),
+        Column('uuid', UNIQUEIDENTIFIER(), primary_key=True),
         Column('name', String(length=12), nullable=False),
         Column('net_worth', Numeric, nullable=False),
         Column('birthday', Date, nullable=False),
