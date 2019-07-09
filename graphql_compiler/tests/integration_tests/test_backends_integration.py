@@ -124,6 +124,26 @@ class IntegrationTests(TestCase):
 
         self.assertResultsEqual(graphql_query, parameters, backend_name, expected_results)
 
+    @all_backends
+    @integration_fixtures
+    def test_simple_filter_on_uid_field(self, backend_name):
+        graphql_query = '''
+        {
+            Animal {
+                name @output(out_name: "animal_name")
+                uuid @filter(op_name: "=", value: ["$uuid"])
+            }
+        }
+        '''
+        parameters = {
+            'uuid': 'cfc6e625-8594-0927-468f-f53d864a7a51',
+        }
+        expected_results = [
+            {'animal_name': 'Animal 1'},
+        ]
+
+        self.assertResultsEqual(graphql_query, parameters, backend_name, expected_results)
+
     @integration_fixtures
     def test_edge_from_superclass_with_preferred_location_not_at_root(self):
         graphql_query = '''{
