@@ -231,6 +231,28 @@ class IntegrationTests(TestCase):
         ]
         self.assertResultsEqual(graphql_query, parameters, backend_name, expected_results)
 
+    @all_backends
+    @integration_fixtures
+    def test_filter_on_datetime(self, backend_name):
+        graphql_query = '''
+        {
+            Event {
+                uuid @output(out_name: "uuid")
+                event_date @filter(op_name: "=", value: ["$datetime"])
+            }
+        }
+        '''
+        import datetime
+        if backend_name == test_backend.ORIENTDB:
+            return
+        parameters = {
+            'datetime': datetime.datetime(2000, 1, 1, 1, 1, 1),
+        }
+        expected_results = [
+            {'uuid': 'cfc6e625-8594-0927-468f-f53d864a7a55'},
+        ]
+        self.assertResultsEqual(graphql_query, parameters, backend_name, expected_results)
+
     @integration_fixtures
     def test_snapshot_graphql_schema_from_orientdb_schema(self):
         class_to_field_type_overrides = {

@@ -113,10 +113,18 @@ def generate_sql_integration_data(sql_test_backends):
         ),
     )
     event_rows = (
-
+        (
+            'cfc6e625-8594-0927-468f-f53d864a7a55',
+            datetime.datetime(2000, 1, 1, 1, 1, 1),
+        ),
+        (
+            'cfc6e625-8594-0927-468f-f53d864a7a56',
+            datetime.datetime(2000, 1, 1, 1, 1, 2),
+        ),
     )
     table_values = [
         (tables['Animal'], animal_rows),
+        (tables['Event'], event_rows)
     ]
     for sql_test_backend in six.itervalues(sql_test_backends):
         for table, insert_values in table_values:
