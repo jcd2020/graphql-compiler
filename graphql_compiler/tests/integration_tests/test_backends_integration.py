@@ -6,6 +6,7 @@ from graphql.type import GraphQLID
 from graphql.utils.schema_printer import print_schema
 from parameterized import parameterized
 import pytest
+import datetime
 
 from ...schema_generation.orientdb.schema_properties import ORIENTDB_BASE_VERTEX_CLASS_NAME
 from ...tests import test_backend
@@ -220,7 +221,6 @@ class IntegrationTests(TestCase):
             }
         }
         '''
-        import datetime
         if backend_name == test_backend.ORIENTDB:
             return
         parameters = {
@@ -242,7 +242,6 @@ class IntegrationTests(TestCase):
             }
         }
         '''
-        import datetime
         if backend_name == test_backend.ORIENTDB:
             return
         parameters = {
@@ -252,6 +251,28 @@ class IntegrationTests(TestCase):
             {'uuid': 'cfc6e625-8594-0927-468f-f53d864a7a55'},
         ]
         self.assertResultsEqual(graphql_query, parameters, backend_name, expected_results)
+
+    @all_backends
+    @integration_fixtures
+    def test_filter_on_boolean(self, backend_name):
+        graphql_query = '''
+        {
+            Animal {
+                name @output(out_name: "animal_name")
+                alive @filter(op_name: "=", value: ["$is_alive"])
+            }
+        }
+        '''
+        if backend_name == test_backend.ORIENTDB:
+            return
+        parameters = {
+            'is_alive': True,
+        }
+        expected_results = [
+            {'animal_name': 'Animal 1'},
+        ]
+        self.assertResultsEqual(graphql_query, parameters, backend_name, expected_results)
+
 
     @integration_fixtures
     def test_snapshot_graphql_schema_from_orientdb_schema(self):
