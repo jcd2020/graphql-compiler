@@ -68,6 +68,8 @@ def check_test_data(test_case, test_data, expected_match, expected_gremlin, expe
             test_case.sql_metadata,
             type_equivalence_hints=schema_based_type_equivalence_hints)
         from sqlalchemy.dialects import mssql
+        from ..compiler.emit_sql import print_mssql_query
+        print_mssql_query(result.query)  # Just test that it doesn't raise
         compare_sql(test_case, expected_sql, str(result.query.compile(dialect=mssql.dialect())))
         test_case.assertEqual(test_data.expected_output_metadata, result.output_metadata)
         compare_input_metadata(test_case, test_data.expected_input_metadata,

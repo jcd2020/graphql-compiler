@@ -189,7 +189,9 @@ def print_mssql_query(statement):
             if isinstance(value, (list, tuple)):
                 return "(%s)" % (",".join([self.render_literal_value(x, type_) for x in value]))
             else:
-                if isinstance(value, bool):
+                if value is None:
+                    return 'NULL'
+                elif isinstance(value, bool):
                     return '1' if value else '0'
                 elif isinstance(value, (int, float, Decimal)):
                     return str(value)
