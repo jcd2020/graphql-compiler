@@ -341,9 +341,20 @@ def get_sql_metadata():
         sqlalchemy_metadata,
         sqlalchemy.Column('uuid', sqlalchemy.String(36), primary_key=True),
         sqlalchemy.Column('name', sqlalchemy.String(length=12), nullable=False),
+        sqlalchemy.Column('eats', sqlalchemy.String(36), nullable=True),
     )
     tables['UniquelyIdentifiable'] = sqlalchemy.Table(
         'UniquelyIdentifiable',
+        sqlalchemy_metadata,
+        sqlalchemy.Column('uuid', sqlalchemy.String(36), primary_key=True),
+    )
+    tables['Union__BirthEvent__Event__FeedingEvent'] = sqlalchemy.Table(
+        'Union__BirthEvent__Event__FeedingEvent',
+        sqlalchemy_metadata,
+        sqlalchemy.Column('uuid', sqlalchemy.String(36), primary_key=True),
+    )
+    tables['Union__Food__FoodOrSpecies__Species'] = sqlalchemy.Table(
+        'Union__Food__FoodOrSpecies__Species',
         sqlalchemy_metadata,
         sqlalchemy.Column('uuid', sqlalchemy.String(36), primary_key=True),
     )
@@ -367,6 +378,13 @@ def get_sql_metadata():
             'out_Animal_FedAt': {
                 'to_table': 'FeedingEvent',
                 'from_column': 'fed_at',
+                'to_column': 'uuid',
+            },
+        },
+        'Species': {
+            'out_Species_Eats': {
+                'to_table': 'Union__Food__FoodOrSpecies__Species',
+                'from_column': 'eats',
                 'to_column': 'uuid',
             },
         },
