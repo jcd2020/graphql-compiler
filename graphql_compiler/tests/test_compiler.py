@@ -82,8 +82,8 @@ class CompilerTests(unittest.TestCase):
         self.maxDiff = None
         self.schema = get_schema()
         _, sqlalchemy_metadata = get_animal_schema_sql_metadata()
-        tables, joins, coercions = get_sql_metadata()
-        self.sql_metadata = SqlMetadata(tables, joins, coercions)
+        tables, joins = get_sql_metadata()
+        self.sql_metadata = SqlMetadata(tables, joins)
 
     def test_immediate_output(self):
         test_data = test_input_data.immediate_output()

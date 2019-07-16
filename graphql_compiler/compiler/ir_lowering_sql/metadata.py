@@ -13,7 +13,7 @@ class SqlMetadata(object):
         - GraphQL edges -> SQL JOINs
     """
 
-    def __init__(self, tables, joins, coercions=None):
+    def __init__(self, tables, joins):
         """Initialize a new SQL metadata.
 
         Args:
@@ -25,17 +25,9 @@ class SqlMetadata(object):
                            to_column: column name in tables[to_table]. The join is done on the from_column
                                       and to_column being equal. If you really need other kinds of joins,
                                       feel free to extend the interface.
-            - coercions: dict mapping graphql classes that have subclasses to:
-                            dict mapping each proper subclass <subcls> to a dict with the following info:
-                               disambiguation_column: a column on the table
-                               allowed_values: tuple of values the disambiguation_column can take
-                                               if the row is of class <subcls>.
         """
         self.table_name_to_table = tables
         self.joins = joins
-        self.coercions = coercions
-        if coercions is None:
-            self.coercions = {}
 
     def get_table(self, schema_type):
         """Retrieve a SQLAlchemy table based on the supplied GraphQL schema type name."""
