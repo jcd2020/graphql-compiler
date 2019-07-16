@@ -530,6 +530,7 @@ class OutputContextField(Expression):
             raise NotImplementedError(u'We dont support __typename yet')
 
         alias = aliases[self.location.at_vertex().query_path]
+        # TODO don't return None if not exists
         return alias.c.get(self.location.field)
 
     def __eq__(self, other):

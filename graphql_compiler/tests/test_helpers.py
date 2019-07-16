@@ -290,6 +290,7 @@ def get_sql_metadata():
         sqlalchemy.Column('species', sqlalchemy.String(36), nullable=True),
         sqlalchemy.Column('related_entity', sqlalchemy.String(36), nullable=True),
         sqlalchemy.Column('fed_at', sqlalchemy.String(36), nullable=True),
+        sqlalchemy.Column('important_event', sqlalchemy.String(36), nullable=True),
     )
     tables['BirthEvent'] = sqlalchemy.Table(
         'BirthEvent',
@@ -316,6 +317,7 @@ def get_sql_metadata():
         'FeedingEvent',
         sqlalchemy_metadata,
         sqlalchemy.Column('uuid', sqlalchemy.String(36), primary_key=True),
+        sqlalchemy.Column('name', sqlalchemy.String(length=12), nullable=False),
         sqlalchemy.Column('event_date', sqlalchemy.DateTime, nullable=False),
     )
     tables['Food'] = sqlalchemy.Table(
@@ -360,7 +362,7 @@ def get_sql_metadata():
     )
 
     subclasses = {
-        'Entity': {'Entity', 'Animal', 'Species', 'Event'}
+        'Entity': {'Entity', 'Animal', 'Species', 'Event', 'Food'}
     }
 
     edges = {
@@ -378,6 +380,11 @@ def get_sql_metadata():
             'out_Animal_FedAt': {
                 'to_table': 'FeedingEvent',
                 'from_column': 'fed_at',
+                'to_column': 'uuid',
+            },
+            'out_Animal_ImportantEvent': {
+                'to_table': 'Union__BirthEvent__Event__FeedingEvent',
+                'from_column': 'important_event',
                 'to_column': 'uuid',
             },
         },
