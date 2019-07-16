@@ -289,17 +289,11 @@ def get_sql_metadata():
         sqlalchemy.Column('parent', sqlalchemy.String(36), nullable=True),
         sqlalchemy.Column('species', sqlalchemy.String(36), nullable=True),
     )
-    tables['Species'] = sqlalchemy.Table(
-        'Species',
+    tables['BirthEvent'] = sqlalchemy.Table(
+        'BirthEvent',
         sqlalchemy_metadata,
         sqlalchemy.Column('uuid', sqlalchemy.String(36), primary_key=True),
         sqlalchemy.Column('name', sqlalchemy.String(length=12), nullable=False),
-    )
-    tables['Event'] = sqlalchemy.Table(
-        'Event',
-        sqlalchemy_metadata,
-        sqlalchemy.Column('uuid', sqlalchemy.String(36), primary_key=True),
-        sqlalchemy.Column('event_date', sqlalchemy.DateTime, nullable=False),
     )
     tables['Entity'] = sqlalchemy.Table(
         'Entity',
@@ -307,6 +301,48 @@ def get_sql_metadata():
         sqlalchemy.Column('uuid', sqlalchemy.String(36), primary_key=True),
         sqlalchemy.Column('name', sqlalchemy.String(length=12), nullable=False),
         sqlalchemy.Column('__source_table_name', sqlalchemy.String(36), nullable=False),
+    )
+    tables['Event'] = sqlalchemy.Table(
+        'Event',
+        sqlalchemy_metadata,
+        sqlalchemy_metadata,
+        sqlalchemy.Column('uuid', sqlalchemy.String(36), primary_key=True),
+        sqlalchemy.Column('event_date', sqlalchemy.DateTime, nullable=False),
+    )
+    tables['FeedingEvent'] = sqlalchemy.Table(
+        'FeedingEvent',
+        sqlalchemy_metadata,
+        sqlalchemy.Column('uuid', sqlalchemy.String(36), primary_key=True),
+        sqlalchemy.Column('event_date', sqlalchemy.DateTime, nullable=False),
+    )
+    tables['Food'] = sqlalchemy.Table(
+        'Food',
+        sqlalchemy_metadata,
+        sqlalchemy.Column('uuid', sqlalchemy.String(36), primary_key=True),
+        sqlalchemy.Column('name', sqlalchemy.String(length=12), nullable=False),
+    )
+    tables['FoodOrSpecies'] = sqlalchemy.Table(
+        'FoodOrSpecies',
+        sqlalchemy_metadata,
+        sqlalchemy.Column('uuid', sqlalchemy.String(36), primary_key=True),
+        sqlalchemy.Column('name', sqlalchemy.String(length=12), nullable=False),
+    )
+    tables['Location'] = sqlalchemy.Table(
+        'Location',
+        sqlalchemy_metadata,
+        sqlalchemy.Column('uuid', sqlalchemy.String(36), primary_key=True),
+        sqlalchemy.Column('name', sqlalchemy.String(length=12), nullable=False),
+    )
+    tables['Species'] = sqlalchemy.Table(
+        'Species',
+        sqlalchemy_metadata,
+        sqlalchemy.Column('uuid', sqlalchemy.String(36), primary_key=True),
+        sqlalchemy.Column('name', sqlalchemy.String(length=12), nullable=False),
+    )
+    tables['UniquelyIdentifiable'] = sqlalchemy.Table(
+        'UniquelyIdentifiable',
+        sqlalchemy_metadata,
+        sqlalchemy.Column('uuid', sqlalchemy.String(36), primary_key=True),
     )
 
     edges = {
