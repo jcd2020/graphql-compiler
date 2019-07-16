@@ -6,7 +6,9 @@ from os import path
 
 from funcy import retry
 import six
-from sqlalchemy import Column, Date, DateTime, MetaData, Numeric, String, Table, create_engine, text
+from sqlalchemy import Column, Date, DateTime, MetaData, Numeric, String, Table, create_engine, \
+                       text
+from sqlalchemy.dialects.mssql.base import BIT
 from sqlalchemy.schema import CreateSchema
 
 from ...compiler.ir_lowering_sql.metadata import SqlMetadata
@@ -92,28 +94,43 @@ def generate_sql_integration_data(sql_test_backends):
             'Animal 1',
             Decimal('100'),
             datetime.date(1900, 1, 1),
+            True,
         ),
         (
             'cfc6e625-8594-0927-468f-f53d864a7a52',
             'Animal 2',
             Decimal('200'),
             datetime.date(1950, 2, 2),
+            False,
         ),
         (
             'cfc6e625-8594-0927-468f-f53d864a7a53',
             'Animal 3',
             Decimal('300'),
             datetime.date(1975, 3, 3),
+            False,
         ),
         (
             'cfc6e625-8594-0927-468f-f53d864a7a54',
             'Animal 4',
             Decimal('400'),
             datetime.date(2000, 4, 4),
+            False,
+        ),
+    )
+    event_rows = (
+        (
+            'cfc6e625-8594-0927-468f-f53d864a7a55',
+            datetime.datetime(2000, 1, 1, 1, 1, 1),
+        ),
+        (
+            'cfc6e625-8594-0927-468f-f53d864a7a56',
+            datetime.datetime(2000, 1, 1, 1, 1, 2),
         ),
     )
     table_values = [
         (tables['Animal'], animal_rows),
+        (tables['Event'], event_rows)
     ]
     for sql_test_backend in six.itervalues(sql_test_backends):
         for table, insert_values in table_values:
@@ -128,13 +145,15 @@ def generate_sql_integration_data(sql_test_backends):
 def get_animal_schema_sql_metadata():
     """Return Dict[str, Table] table lookup, and associated metadata, for the Animal test schema."""
     metadata = MetaData()
+    from sqlalchemy.dialects.mssql.base import UNIQUEIDENTIFIER
     animal_table = Table(
         'animal',
         metadata,
-        Column('uuid', String(36), primary_key=True),
+        Column('uuid', UNIQUEIDENTIFIER(), primary_key=True),
         Column('name', String(length=12), nullable=False),
         Column('net_worth', Numeric, nullable=False),
         Column('birthday', Date, nullable=False),
+        Column('alive', BIT, nullable=False)
     )
     event_table = Table(
         'event',

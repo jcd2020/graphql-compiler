@@ -48,6 +48,7 @@ SCHEMA_TEXT = '''
     type Animal implements Entity, UniquelyIdentifiable {
         _x_count: Int
         alias: [String]
+        alive: Boolean
         birthday: Date
         color: String
         description: String
@@ -284,6 +285,7 @@ def get_sql_metadata():
         sqlalchemy.Column('name', sqlalchemy.String(length=12), nullable=False),
         sqlalchemy.Column('net_worth', sqlalchemy.Integer, nullable=False),
         sqlalchemy.Column('birthday', sqlalchemy.Date, nullable=False),
+        sqlalchemy.Column('alive', sqlalchemy.Boolean(), nullable=True),
         sqlalchemy.Column('parent', sqlalchemy.String(36), nullable=True),
         sqlalchemy.Column('species', sqlalchemy.String(36), nullable=True),
     )

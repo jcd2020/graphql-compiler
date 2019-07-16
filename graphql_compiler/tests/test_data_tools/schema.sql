@@ -52,6 +52,7 @@ CREATE CLASS Location EXTENDS Entity
 ### Animal ###
 CREATE CLASS Animal EXTENDS Entity
 
+CREATE PROPERTY Animal.alive Boolean
 CREATE PROPERTY Animal.color String
 CREATE INDEX Animal.color NOTUNIQUE
 

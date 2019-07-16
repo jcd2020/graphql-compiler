@@ -4,7 +4,8 @@ from decimal import Decimal
 import six
 
 from ... import graphql_to_match, graphql_to_sql
-from ...compiler.ir_lowering_sql.metadata import SqlMetadata
+from ...compiler.emit_sql import print_mssql_query
+from sqlalchemy.dialects import mssql
 
 
 def sort_db_results(results):
@@ -55,10 +56,18 @@ def compile_and_run_sql_query(schema, graphql_query, parameters, engine, sql_met
     dialect_name = engine.dialect.name
     compilation_result = graphql_to_sql(schema, graphql_query, parameters, sql_metadata, None)
     query = compilation_result.query
-    results = []
+    results_with_query_string = []
+    results_with_sqlalchemy_clause = []
     connection = engine.connect()
+    query_string = print_mssql_query(query.params(parameters))
     with connection.begin() as trans:
-        for result in connection.execute(query):
-            results.append(dict(result))
+        for result in connection.execute(query_string):
+            results_with_query_string.append(dict(result))
+        for result in connection.execute(query, parameters):
+            results_with_sqlalchemy_clause.append(dict(result))
         trans.rollback()
-    return results
+    if results_with_query_string != results_with_sqlalchemy_clause:
+        raise AssertionError('Expected results of query executed a string and as a ClauseElement '
+                             'to be the same.')
+    return results_with_query_string
+
