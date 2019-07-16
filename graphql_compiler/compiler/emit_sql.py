@@ -125,15 +125,11 @@ def emit_sql(ir_blocks, query_metadata_table, compiler_metadata):
         if isinstance(block, blocks.ConstructResult):
             for output_name, field in six.iteritems(block.fields):
 
-                # HACK for outputs in optionals
+                # HACK for outputs in optionals. Wrong on so many levels
                 if isinstance(field, expressions.TernaryConditional):
-                    if isinstance(field.predicate, expressions.ContextFieldExistence):
-                        field = field.if_true
+                    field = field.if_true
 
-                if isinstance(field, expressions.OutputContextField):
-                    outputs.append(field.to_sql(alias_at_location, current_alias).label(output_name))
-                else:
-                    raise NotImplementedError()
+                outputs.append(field.to_sql(alias_at_location, current_alias).label(output_name))
 
     return sqlalchemy.select(outputs).select_from(from_clause).where(sqlalchemy.and_(*filters))
 

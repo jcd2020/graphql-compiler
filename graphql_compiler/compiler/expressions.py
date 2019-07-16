@@ -10,6 +10,8 @@ from .helpers import (
     ensure_unicode_string, is_graphql_type, safe_quoted_string, strip_non_null_from_type,
     validate_safe_string
 )
+import operator
+from sqlalchemy import sql
 
 
 # Since MATCH uses $-prefixed keywords to indicate special values,
@@ -399,7 +401,6 @@ class ContextField(Expression):
             return u'$matched.%s.%s' % (mark_name, field_name)
 
     def to_gremlin(self):
-
         """Return a unicode object with the Gremlin representation of this expression."""
         self.validate()
 
@@ -419,7 +420,19 @@ class ContextField(Expression):
         return template.format(mark_name=mark_name, field_name=field_name)
 
     def to_sql(self, aliases, current_alias):
-        raise NotImplementedError()
+        self.validate()
+
+        if isinstance(self.field_type, GraphQLList):
+            raise NotImplementedError(u'We dont support lists yet')
+
+        alias = aliases[self.location.at_vertex().query_path]
+
+        if self.location.field is not None:
+            if '@' in self.location.field:
+                raise NotImplementedError(u'We dont support __typename yet')
+            return alias.c.get(self.location.field)
+        else:
+            raise NotImplementedError()
 
 
 class OutputContextField(Expression):
@@ -931,8 +944,6 @@ class BinaryComposition(Expression):
     def to_sql(self, aliases, current_alias):
         self.validate()
 
-        import operator
-        from sqlalchemy import sql
         translation_table = {
             u'=': operator.__eq__,
             u'!=': operator.__ne__,
@@ -1037,3 +1048,12 @@ class TernaryConditional(Expression):
             predicate=self.predicate.to_gremlin(),
             if_true=self.if_true.to_gremlin(),
             if_false=self.if_false.to_gremlin())
+
+    def to_sql(self, aliases, current_alias):
+        self.validate()
+        return sql.expression.case(
+            [(self.predicate.to_sql(aliases, current_alias),
+              self.if_true.to_sql(aliases, current_alias))],
+            else_=self.if_false.to_sql(aliases, current_alias))
+
+
