@@ -72,8 +72,8 @@ def emit_sql(ir_blocks, query_metadata_table, compiler_metadata):
     current_classname, local_operations, global_operations = split_blocks(ir_blocks)
     current_location = query_metadata_table.root_location
     if current_classname not in tables:
-        # TODO this is bad
-        raise NotImplementedError(u'Edges need to be added in test_helpers {}'
+        # TODO make it AssertionError
+        raise NotImplementedError(u'Class {} exists in the schema, but not in the SqlMetadata tables'
                                   .format(current_classname))
     current_alias = tables[current_classname].alias()
     alias_at_location = {}  # Updated only at MarkLocation blocks. Maps query path to alias
@@ -96,8 +96,9 @@ def emit_sql(ir_blocks, query_metadata_table, compiler_metadata):
             edge_field = u'{}_{}'.format(block.direction, block.edge_name)
             current_location = current_location.navigate_to_subpath(edge_field)
             if edge_field not in sql_edges.get(current_classname, {}):
-                # TODO this is bad
-                raise NotImplementedError(u'Edges need to be added in test_helpers')
+                # TODO make it AssertionError
+                raise NotImplementedError(u'Edge {} from {} exists in the schema, but not in the '
+                                          u'SqlMetadata edges'.format(edge_field, current_classname))
             edge = sql_edges[current_classname][edge_field]
             current_alias = tables[edge['to_table']].alias()
             current_classname = query_metadata_table.get_location_info(current_location).type.name

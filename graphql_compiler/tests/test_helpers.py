@@ -306,6 +306,7 @@ def get_sql_metadata():
         sqlalchemy_metadata,
         sqlalchemy.Column('uuid', sqlalchemy.String(36), primary_key=True),
         sqlalchemy.Column('name', sqlalchemy.String(length=12), nullable=False),
+        sqlalchemy.Column('__source_table_name', sqlalchemy.String(36), nullable=False),
     )
 
     edges = {
@@ -323,7 +324,24 @@ def get_sql_metadata():
         },
     }
 
-    return tables, edges
+    coercions = {
+        'Entity': {
+            'Species': {
+                'disambiguation_column': '__source_table_name',
+                'allowed_values': ('Species')
+            },
+            'Event': {
+                'disambiguation_column': '__source_table_name',
+                'allowed_values': ('Event')
+            },
+            'Animal': {
+                'disambiguation_column': '__source_table_name',
+                'allowed_values': ('Animal')
+            }
+        }
+    }
+
+    return tables, edges, coercions
 
 
 
