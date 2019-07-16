@@ -714,6 +714,10 @@ class ContextFieldExistence(Expression):
         """Must not be used -- ContextFieldExistence must be lowered during the IR lowering step."""
         raise AssertionError(u'ContextFieldExistence.to_gremlin() was called: {}'.format(self))
 
+    def to_sql(self, aliases, current_alias):
+        """Must not be used -- ContextFieldExistence must be lowered during the IR lowering step."""
+        raise AssertionError(u'ContextFieldExistence.to_gremlin() was called: {}'.format(self))
+
 
 def _validate_operator_name(operator, supported_operators):
     """Ensure the named operator is valid and supported."""
