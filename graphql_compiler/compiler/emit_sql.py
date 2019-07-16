@@ -18,10 +18,6 @@ import unittest
 from . import compiler_frontend, blocks, helpers, expressions
 
 
-def lower_ir(ir_blocks, metadata_table, type_equivalence_hints=None):
-    return ir_blocks
-
-
 def split_blocks(ir_blocks):
     if not isinstance(ir_blocks[0], blocks.QueryRoot):
         raise AssertionError(u'TODO')

@@ -112,11 +112,11 @@ def compile_graphql_to_sql(schema, graphql_string, compiler_metadata, type_equiv
     Returns:
         a CompilationResult object
     """
-    from . import emit_sql
+    from . import emit_sql, ir_lowering_sql
     ir_and_metadata = graphql_to_ir(
         schema, graphql_string, type_equivalence_hints=type_equivalence_hints)
 
-    lowered_ir_blocks = emit_sql.lower_ir(
+    lowered_ir_blocks = ir_lowering_sql.lower_ir(
         ir_and_metadata.ir_blocks, ir_and_metadata.query_metadata_table,
         type_equivalence_hints=type_equivalence_hints)
 
