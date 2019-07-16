@@ -2,7 +2,7 @@
 from collections import namedtuple
 
 from . import (
-    emit_gremlin, emit_match, emit_sql, ir_lowering_gremlin, ir_lowering_match, ir_lowering_sql
+    emit_gremlin, emit_match, ir_lowering_gremlin, ir_lowering_match, ir_lowering_sql
 )
 from .compiler_frontend import graphql_to_ir
 

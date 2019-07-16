@@ -2,7 +2,6 @@
 import six
 
 from ... import exceptions
-from .constants import SqlBackend
 
 
 class SqlMetadata(object):
