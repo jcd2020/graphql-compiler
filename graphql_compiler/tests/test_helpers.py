@@ -391,8 +391,8 @@ def get_sql_metadata():
                 'to_column': join_info['from_column'],
             }
     edges = {
-        class_name: dict(out_edges, **reversed_edges.get(class_name, {}))
-        for class_name, out_edges in six.iteritems(edges)
+        class_name: dict(edges.get(class_name, {}), **reversed_edges.get(class_name, {}))
+        for class_name in tables.keys()
     }
 
     # Inherit edges from superclasses
