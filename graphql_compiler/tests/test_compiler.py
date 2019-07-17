@@ -68,6 +68,8 @@ def check_test_data(test_case, test_data, expected_match, expected_gremlin, expe
             test_case.sql_metadata,
             type_equivalence_hints=schema_based_type_equivalence_hints)
         from sqlalchemy.dialects import mssql
+        from ..compiler.emit_sql import print_mssql_query
+        print_mssql_query(result.query)  # Just test that it doesn't raise
         compare_sql(test_case, expected_sql, str(result.query.compile(dialect=mssql.dialect())))
         test_case.assertEqual(test_data.expected_output_metadata, result.output_metadata)
         compare_input_metadata(test_case, test_data.expected_input_metadata,
@@ -2585,7 +2587,16 @@ class CompilerTests(unittest.TestCase):
             expected_input_metadata=expected_input_metadata,
             type_equivalence_hints=None)
 
-        expected_sql = NotImplementedError
+        expected_sql = '''
+            SELECT
+                [Animal_1].name AS animal_name
+            FROM
+                [Animals].schema_1.[Animal] AS [Animal_1]
+                JOIN [Animals].schema_1.[Animal] AS [Animal_2]
+                    ON [Animal_1].parent = [Animal_2].uuid
+            WHERE
+                ([Animal_2].name LIKE '%' + [Animal_1].name + '%')
+        '''
 
         check_test_data(self, test_data, expected_match, expected_gremlin, expected_sql)
 
@@ -3323,7 +3334,22 @@ class CompilerTests(unittest.TestCase):
             expected_input_metadata=expected_input_metadata,
             type_equivalence_hints=None)
 
-        expected_sql = NotImplementedError
+        expected_sql = '''
+            SELECT
+                [Animal_1].uuid AS child_uuid,
+                [Species_1].uuid AS species_uuid,
+                [FeedingEvent_1].uuid AS event_uuid
+            FROM
+                [Animals].schema_1.[Animal] AS [Animal_2]
+                LEFT OUTER JOIN [Animals].schema_1.[Animal] AS [Animal_1]
+                    ON [Animal_2].parent = [Animal_1].uuid
+                LEFT OUTER JOIN [Animals].schema_1.[Species] AS [Species_1]
+                    ON [Animal_2].species = [Species_1].uuid
+                LEFT OUTER JOIN [Animals].schema_1.[FeedingEvent] AS [FeedingEvent_1]
+                    ON [Animal_2].fed_at = [FeedingEvent_1].uuid
+            WHERE
+                [Animal_2].uuid = :uuid
+        '''
 
         check_test_data(self, test_data, expected_match, expected_gremlin, expected_sql)
 
@@ -3918,7 +3944,20 @@ class CompilerTests(unittest.TestCase):
                 animal_name: m.Animal__out_Animal_ParentOf__out_Animal_ParentOf___1.name
             ])}
         '''
-        expected_sql = NotImplementedError
+        expected_sql = '''
+            SELECT
+                [Animal_1].name AS animal_name
+            FROM
+                [Animals].schema_1.[Animal] AS [Animal_2]
+                JOIN [Animals].schema_1.[Animal] AS [Animal_3]
+                    ON [Animal_2].parent = [Animal_3].uuid
+                JOIN [Animals].schema_1.[Animal] AS [Animal_1]
+                    ON [Animal_3].parent = [Animal_1].uuid
+                JOIN [Animals].schema_1.[Entity] AS [Entity_1]
+                    ON [Animal_3].related_entity = [Entity_1].uuid
+            WHERE
+                [Entity_1].name IN ([EXPANDING_entity_names])
+        '''
 
         check_test_data(self, test_data, expected_match, expected_gremlin, expected_sql)
 
@@ -4466,7 +4505,18 @@ class CompilerTests(unittest.TestCase):
                 name: m.Animal___1.name
             ])}
         '''
-        expected_sql = NotImplementedError
+        expected_sql = '''
+           SELECT
+               [Animal_1].name AS name,
+               [Animal_2].name AS child_name,
+               [Animal_3].name AS grandchild_name
+           FROM
+               [Animals].schema_1.[Animal] AS [Animal_1]
+               LEFT OUTER JOIN [Animals].schema_1.[Animal] AS [Animal_2]
+                   ON [Animal_1].uuid = [Animal_2].parent
+               JOIN [Animals].schema_1.[Animal] AS [Animal_3]
+                   ON [Animal_2].uuid = [Animal_3].parent
+        '''
 
         check_test_data(self, test_data, expected_match, expected_gremlin, expected_sql)
 
@@ -4540,7 +4590,19 @@ class CompilerTests(unittest.TestCase):
                 name: m.Animal___1.name
             ])}
         '''
-        expected_sql = NotImplementedError
+        expected_sql = '''
+            SELECT
+                [Animal_1].name AS name,
+                [Animal_2].name AS child_name,
+                [Animal_3].name AS grandchild_name
+            FROM
+                [Animals].schema_1.[Animal] AS [Animal_1]
+                LEFT OUTER JOIN [Animals].schema_1.[Animal] AS [Animal_2]
+                    ON [Animal_1].uuid = [Animal_2].parent
+                JOIN [Animals].schema_1.[Animal] AS [Animal_3]
+                    ON [Animal_2].uuid = [Animal_3].parent
+            WHERE ([Animal_1].name LIKE '%' + :wanted + '%')
+        '''
 
         check_test_data(self, test_data, expected_match, expected_gremlin, expected_sql)
 
@@ -4627,7 +4689,21 @@ class CompilerTests(unittest.TestCase):
                 )
             ])}
         '''
-        expected_sql = NotImplementedError
+        expected_sql = '''
+            SELECT
+                [Animal_1].name AS animal_name,
+                [Animal_2].name AS child_name,
+                [Animal_3].name AS spouse_and_self_name,
+                [Species_1].name AS spouse_species
+            FROM
+                 [Animals].schema_1.[Animal] AS [Animal_1]
+                 LEFT OUTER JOIN [Animals].schema_1.[Animal] AS [Animal_2]
+                     ON [Animal_1].uuid = [Animal_2].parent
+                 JOIN [Animals].schema_1.[Animal] AS [Animal_3]
+                     ON [Animal_2].parent = [Animal_3].uuid
+                 JOIN [Animals].schema_1.[Species] AS [Species_1]
+                     ON [Animal_3].species = [Species_1].uuid
+        '''
 
         check_test_data(self, test_data, expected_match, expected_gremlin, expected_sql)
 
@@ -4716,7 +4792,21 @@ class CompilerTests(unittest.TestCase):
                 )
             ])}
         '''
-        expected_sql = NotImplementedError
+        expected_sql = '''
+            SELECT
+                [Animal_1].name AS animal_name,
+                [Animal_2].name AS child_name,
+                [Animal_3].name AS spouse_and_self_name,
+                [Species_1].name AS spouse_and_self_species
+            FROM
+                [Animals].schema_1.[Animal] AS [Animal_1]
+                JOIN [Animals].schema_1.[Animal] AS [Animal_2]
+                    ON [Animal_1].uuid = [Animal_2].parent
+                LEFT OUTER JOIN [Animals].schema_1.[Animal] AS [Animal_3]
+                    ON [Animal_2].parent = [Animal_3].uuid
+                JOIN [Animals].schema_1.[Species] AS [Species_1]
+                    ON [Animal_3].species = [Species_1].uuid
+        '''
 
         check_test_data(self, test_data, expected_match, expected_gremlin, expected_sql)
 
@@ -4881,7 +4971,26 @@ class CompilerTests(unittest.TestCase):
                 )
             ])}
         '''
-        expected_sql = NotImplementedError
+        expected_sql = '''
+            SELECT
+                [Animal_1].name AS animal_name,
+                [Animal_2].name AS child_name,
+                [Animal_3].name AS spouse_and_self_name,
+                [Animal_4].name AS parent_name,
+                [Species_1].name AS parent_species
+            FROM
+                [Animals].schema_1.[Animal] AS [Animal_1]
+                LEFT OUTER JOIN [Animals].schema_1.[Animal] AS [Animal_2]
+                    ON [Animal_1].uuid = [Animal_2].parent
+                JOIN [Animals].schema_1.[Animal] AS [Animal_3]
+                    ON [Animal_2].parent = [Animal_3].uuid
+                LEFT OUTER JOIN [Animals].schema_1.[Animal] AS [Animal_4]
+                    ON [Animal_1].parent = [Animal_4].uuid
+                JOIN [Animals].schema_1.[Species] AS [Species_1]
+                    ON [Animal_4].species = [Species_1].uuid
+            WHERE
+                ([Animal_1].name LIKE '%' + :wanted + '%')
+        '''
 
         check_test_data(self, test_data, expected_match, expected_gremlin, expected_sql)
 
@@ -5002,7 +5111,22 @@ class CompilerTests(unittest.TestCase):
                 )
             ])}
         '''
-        expected_sql = NotImplementedError
+        expected_sql = '''
+            SELECT
+                [Animal_1].name AS animal_name,
+                [Animal_2].name AS child_name,
+                [Animal_3].name AS parent_name,
+                [Species_1].name AS parent_species
+            FROM
+                [Animals].schema_1.[Animal] AS [Animal_1]
+                LEFT OUTER JOIN [Animals].schema_1.[Animal] AS [Animal_2]
+                    ON [Animal_1].uuid = [Animal_2].parent
+                LEFT OUTER JOIN [Animals].schema_1.[Animal] AS [Animal_3]
+                    ON [Animal_1].parent = [Animal_3].uuid
+                JOIN [Animals].schema_1.[Species] AS [Species_1]
+                    ON [Animal_3].species = [Species_1].uuid
+            WHERE ([Animal_1].name LIKE '%' + :wanted + '%')
+        '''
 
         check_test_data(self, test_data, expected_match, expected_gremlin, expected_sql)
 
@@ -5663,7 +5787,21 @@ class CompilerTests(unittest.TestCase):
                 name: m.Animal___1.name
             ])}
         '''
-        expected_sql = NotImplementedError
+        expected_sql = '''
+            SELECT
+                [Animal_1].name AS name,
+                [Animal_2].name AS child_name,
+                [Animal_3].name AS grandchild_name,
+                [FeedingEvent_1].name AS child_feeding_time
+            FROM
+                [Animals].schema_1.[Animal] AS [Animal_1]
+                LEFT OUTER JOIN [Animals].schema_1.[Animal] AS [Animal_2]
+                    ON [Animal_1].uuid = [Animal_2].parent
+                JOIN [Animals].schema_1.[Animal] AS [Animal_3]
+                    ON [Animal_2].uuid = [Animal_3].parent
+                JOIN [Animals].schema_1.[FeedingEvent] AS [FeedingEvent_1]
+                    ON [Animal_2].fed_at = [FeedingEvent_1].uuid
+        '''
 
         check_test_data(self, test_data, expected_match, expected_gremlin, expected_sql)
 
@@ -6127,7 +6265,21 @@ class CompilerTests(unittest.TestCase):
                 )
             ])}
         '''
-        expected_sql = NotImplementedError
+        expected_sql = '''
+            SELECT
+                [Animal_1].name AS animal_name,
+                [Animal_2].name AS child_name,
+                [Animal_3].name AS spouse_and_self_name,
+                [Species_1].name AS spouse_species
+            FROM
+                [Animals].schema_1.[Animal] AS [Animal_1]
+                LEFT OUTER JOIN [Animals].schema_1.[Animal] AS [Animal_2]
+                    ON [Animal_1].uuid = [Animal_2].parent
+                LEFT OUTER JOIN [Animals].schema_1.[Animal] AS [Animal_3]
+                    ON [Animal_2].parent = [Animal_3].uuid
+                JOIN [Animals].schema_1.[Species] AS [Species_1]
+                    ON [Animal_3].species = [Species_1].uuid
+        '''
 
         check_test_data(self, test_data, expected_match, expected_gremlin, expected_sql)
 

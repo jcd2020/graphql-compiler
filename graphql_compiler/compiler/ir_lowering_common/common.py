@@ -52,6 +52,9 @@ class OutputContextVertex(ContextField):
 
         return mark_name
 
+    def to_sql(self, aliases, current_alias):
+        raise NotImplementedError()
+
 
 def lower_context_field_existence(ir_blocks, query_metadata_table):
     """Lower ContextFieldExistence expressions into lower-level expressions."""

@@ -294,25 +294,82 @@ def get_sql_metadata():
         sqlalchemy.Column('alive', sqlalchemy.Boolean(), nullable=True),
         sqlalchemy.Column('parent', sqlalchemy.String(36), nullable=True),
         sqlalchemy.Column('species', sqlalchemy.String(36), nullable=True),
+        sqlalchemy.Column('related_entity', sqlalchemy.String(36), nullable=True),
+        sqlalchemy.Column('fed_at', sqlalchemy.String(36), nullable=True),
+        sqlalchemy.Column('important_event', sqlalchemy.String(36), nullable=True),
     )
-    tables['Species'] = sqlalchemy.Table(
-        'Species',
+    tables['BirthEvent'] = sqlalchemy.Table(
+        'BirthEvent',
         sqlalchemy_metadata,
         sqlalchemy.Column('uuid', sqlalchemy.String(36), primary_key=True),
         sqlalchemy.Column('name', sqlalchemy.String(length=12), nullable=False),
-    )
-    tables['Event'] = sqlalchemy.Table(
-        'Event',
-        sqlalchemy_metadata,
-        sqlalchemy.Column('uuid', sqlalchemy.String(36), primary_key=True),
-        sqlalchemy.Column('event_date', sqlalchemy.DateTime, nullable=False),
     )
     tables['Entity'] = sqlalchemy.Table(
         'Entity',
         sqlalchemy_metadata,
         sqlalchemy.Column('uuid', sqlalchemy.String(36), primary_key=True),
         sqlalchemy.Column('name', sqlalchemy.String(length=12), nullable=False),
+        sqlalchemy.Column('related_entity', sqlalchemy.String(36), nullable=True),
+        sqlalchemy.Column('__source_table_name', sqlalchemy.String(36), nullable=False),
     )
+    tables['Event'] = sqlalchemy.Table(
+        'Event',
+        sqlalchemy_metadata,
+        sqlalchemy_metadata,
+        sqlalchemy.Column('uuid', sqlalchemy.String(36), primary_key=True),
+        sqlalchemy.Column('event_date', sqlalchemy.DateTime, nullable=False),
+    )
+    tables['FeedingEvent'] = sqlalchemy.Table(
+        'FeedingEvent',
+        sqlalchemy_metadata,
+        sqlalchemy.Column('uuid', sqlalchemy.String(36), primary_key=True),
+        sqlalchemy.Column('name', sqlalchemy.String(length=12), nullable=False),
+        sqlalchemy.Column('event_date', sqlalchemy.DateTime, nullable=False),
+    )
+    tables['Food'] = sqlalchemy.Table(
+        'Food',
+        sqlalchemy_metadata,
+        sqlalchemy.Column('uuid', sqlalchemy.String(36), primary_key=True),
+        sqlalchemy.Column('name', sqlalchemy.String(length=12), nullable=False),
+    )
+    tables['FoodOrSpecies'] = sqlalchemy.Table(
+        'FoodOrSpecies',
+        sqlalchemy_metadata,
+        sqlalchemy.Column('uuid', sqlalchemy.String(36), primary_key=True),
+        sqlalchemy.Column('name', sqlalchemy.String(length=12), nullable=False),
+    )
+    tables['Location'] = sqlalchemy.Table(
+        'Location',
+        sqlalchemy_metadata,
+        sqlalchemy.Column('uuid', sqlalchemy.String(36), primary_key=True),
+        sqlalchemy.Column('name', sqlalchemy.String(length=12), nullable=False),
+    )
+    tables['Species'] = sqlalchemy.Table(
+        'Species',
+        sqlalchemy_metadata,
+        sqlalchemy.Column('uuid', sqlalchemy.String(36), primary_key=True),
+        sqlalchemy.Column('name', sqlalchemy.String(length=12), nullable=False),
+        sqlalchemy.Column('eats', sqlalchemy.String(36), nullable=True),
+    )
+    tables['UniquelyIdentifiable'] = sqlalchemy.Table(
+        'UniquelyIdentifiable',
+        sqlalchemy_metadata,
+        sqlalchemy.Column('uuid', sqlalchemy.String(36), primary_key=True),
+    )
+    tables['Union__BirthEvent__Event__FeedingEvent'] = sqlalchemy.Table(
+        'Union__BirthEvent__Event__FeedingEvent',
+        sqlalchemy_metadata,
+        sqlalchemy.Column('uuid', sqlalchemy.String(36), primary_key=True),
+    )
+    tables['Union__Food__FoodOrSpecies__Species'] = sqlalchemy.Table(
+        'Union__Food__FoodOrSpecies__Species',
+        sqlalchemy_metadata,
+        sqlalchemy.Column('uuid', sqlalchemy.String(36), primary_key=True),
+    )
+
+    subclasses = {
+        'Entity': {'Entity', 'Animal', 'Species', 'Event', 'Food'}
+    }
 
     edges = {
         'Animal': {
@@ -325,9 +382,55 @@ def get_sql_metadata():
                 'to_table': 'Species',
                 'from_column': 'species',
                 'to_column': 'uuid',
-            }
+            },
+            'out_Animal_FedAt': {
+                'to_table': 'FeedingEvent',
+                'from_column': 'fed_at',
+                'to_column': 'uuid',
+            },
+            'out_Animal_ImportantEvent': {
+                'to_table': 'Union__BirthEvent__Event__FeedingEvent',
+                'from_column': 'important_event',
+                'to_column': 'uuid',
+            },
         },
+        'Species': {
+            'out_Species_Eats': {
+                'to_table': 'Union__Food__FoodOrSpecies__Species',
+                'from_column': 'eats',
+                'to_column': 'uuid',
+            },
+        },
+        'Entity': {
+            'out_Entity_Related': {
+                # TODO this should be a junction table instead
+                'to_table': 'Entity',
+                'from_column': 'related_entity',
+                'to_column': 'uuid',
+            }
+        }
     }
+
+    # Include reversed edges
+    reversed_edges = {}
+    for class_name, out_edges in six.iteritems(edges):
+        for edge_name, join_info in six.iteritems(out_edges):
+            reversed_edge_name = 'in_{}'.format(edge_name[4:])
+            reversed_edges.setdefault(join_info['to_table'], {})[reversed_edge_name] = {
+                'to_table': class_name,
+                'from_column': join_info['to_column'],
+                'to_column': join_info['from_column'],
+            }
+    edges = {
+        class_name: dict(edges.get(class_name, {}), **reversed_edges.get(class_name, {}))
+        for class_name in tables.keys()
+    }
+
+    # Inherit edges from superclasses
+    for class_name, subclass_set in six.iteritems(subclasses):
+        for subclass in subclass_set:
+            for edge_name, join_info in six.iteritems(edges[class_name]):
+                edges.setdefault(subclass, {})[edge_name] = join_info
 
     return tables, edges
 

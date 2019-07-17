@@ -2,7 +2,7 @@
 from collections import namedtuple
 
 from . import (
-    emit_gremlin, emit_match, emit_sql, ir_lowering_gremlin, ir_lowering_match, ir_lowering_sql
+    emit_gremlin, emit_match, ir_lowering_gremlin, ir_lowering_match, ir_lowering_sql
 )
 from .compiler_frontend import graphql_to_ir
 
@@ -112,15 +112,15 @@ def compile_graphql_to_sql(schema, graphql_string, compiler_metadata, type_equiv
     Returns:
         a CompilationResult object
     """
-    from . import sql_tmp
+    from . import emit_sql, ir_lowering_sql
     ir_and_metadata = graphql_to_ir(
         schema, graphql_string, type_equivalence_hints=type_equivalence_hints)
 
-    lowered_ir_blocks = sql_tmp.lower_ir(
+    lowered_ir_blocks = ir_lowering_sql.lower_ir(
         ir_and_metadata.ir_blocks, ir_and_metadata.query_metadata_table,
         type_equivalence_hints=type_equivalence_hints)
 
-    query = sql_tmp.emit_sql(lowered_ir_blocks, ir_and_metadata.query_metadata_table, compiler_metadata)
+    query = emit_sql.emit_sql(lowered_ir_blocks, ir_and_metadata.query_metadata_table, compiler_metadata)
     return CompilationResult(
         query=query,
         language=SQL_LANGUAGE,
