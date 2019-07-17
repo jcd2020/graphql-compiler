@@ -1,14 +1,18 @@
 # Copyright 2018-present Kensho Technologies, LLC.
 """Transform a SqlNode tree into an executable SQLAlchemy query."""
 from collections import namedtuple
+from datetime import date, datetime
+from decimal import Decimal
 
 from sqlalchemy import Column, bindparam, select
+import sqlalchemy.dialects.mssql as mssql
 from sqlalchemy.sql import expression as sql_expressions
 from sqlalchemy.sql.elements import BindParameter, and_
 
 from . import sql_context_helpers
 from ..compiler import expressions
 from ..compiler.ir_lowering_sql import constants
+from .helpers import GraphQLCompilationError
 
 
 # The compilation context holds state that changes during compilation as the tree is traversed
@@ -284,3 +288,73 @@ def _transform_local_field_to_expression(expression, node, context):
     column_name = expression.field_name
     column = sql_context_helpers.get_column(column_name, node, context)
     return column
+
+
+def print_mssql_query(statement):
+    """
+    Print a query, with values filled in for debugging purposes *only* for security, you should
+    always separate queries from their values. Please also note that this function is quite slow.
+    Inspiration from:
+    https://stackoverflow.com/questions/5631078/sqlalchemy-print-the-actual-query/5698357
+    """
+    compiler = statement._compiler(mssql.dialect())
+    class LiteralCompiler(compiler.__class__):
+        def visit_bindparam(
+                self, bindparam, within_columns_clause=False,
+                literal_binds=False, **kwargs
+        ):
+            return super(LiteralCompiler, self).render_literal_bindparam(
+                    bindparam, within_columns_clause=within_columns_clause,
+                    literal_binds=literal_binds, **kwargs
+            )
+
+        def render_literal_bindparam(self, bindparam, **kw):
+            value = bindparam.effective_value
+            if isinstance(value, list):
+                for sub_value in value:
+                    if isinstance(sub_value, list):
+                        raise GraphQLCompilationError('Param {} is a nested list. No nested lists '
+                                                      'allowed'.format(bindparam.key))
+                    if not isinstance(sub_value, bindparam.type.python_object):
+                        raise GraphQLCompilationError('Param {} is a list with a value {} that is '
+                                                      'not of the expected type {}.'
+                                                      .format(bindparam.key, sub_value,
+                                                              str(bindparam.type.python_object)))
+            else:
+                # This SQLAlchemy type does not have a python_type implementation.
+                if isinstance(bindparam.type, mssql.UNIQUEIDENTIFIER):
+                    if not isinstance(value, str):
+                        raise GraphQLCompilationError('Param {} is not of the expected type {}.'
+                                                      .format(value, str))
+                # This SQLAlchemy type does not have a python_type implementation.
+                elif isinstance(bindparam.type, mssql.BIT):
+                    if not isinstance(value, bool):
+                        raise GraphQLCompilationError('Param {} is not of the expected type {}.'
+                                                      .format(value, bool))
+                elif not isinstance(value, bindparam.type.python_object):
+                    raise GraphQLCompilationError('Param {} is not of the expected type {}.'
+                          .format(value, str(bindparam.type.python_object)))
+            return self.render_literal_value(value, bindparam.type)
+
+        def render_literal_value(self, value, type_):
+            if isinstance(value, (list, tuple)):
+                return "(%s)" % (",".join([self.render_literal_value(x, type_) for x in value]))
+            else:
+                if isinstance(value, bool):
+                    return '1' if value else '0'
+                elif isinstance(value, (int, float, Decimal)):
+                    return str(value)
+                elif isinstance(value, str):
+                    return "'%s'" % value.replace("'", "''")
+                elif isinstance(value, datetime):
+                    return "{ts '%04d-%02d-%02d %02d:%02d:%02d.%03d'}" % (
+                        value.year, value.month, value.day,
+                        value.hour, value.minute, value.second,
+                        value.microsecond / 1000)
+                elif isinstance(value, date):
+                    return "{d '%04d-%02d-%02d'} " % (
+                        value.year, value.month, value.day)
+            return super(LiteralCompiler, self).render_literal_value(value, type_)
+
+    compiler = LiteralCompiler(mssql.dialect(), statement)
+    return str(compiler.process(statement))

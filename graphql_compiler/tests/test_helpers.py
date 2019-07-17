@@ -48,6 +48,7 @@ SCHEMA_TEXT = '''
     type Animal implements Entity, UniquelyIdentifiable {
         _x_count: Int
         alias: [String]
+        alive: Boolean
         birthday: Date
         color: String
         description: String
@@ -276,6 +277,60 @@ def get_schema():
     ast = parse(SCHEMA_TEXT)
     schema = build_ast_schema(ast)
     return schema
+
+
+def get_sql_metadata():
+    import sqlalchemy
+    tables = {}
+    sqlalchemy_metadata = sqlalchemy.MetaData()
+    sqlalchemy_metadata.schema = 'Animals.schema_1'
+    tables['Animal'] = sqlalchemy.Table(
+        'Animal',
+        sqlalchemy_metadata,
+        sqlalchemy.Column('uuid', sqlalchemy.String(36), primary_key=True),
+        sqlalchemy.Column('name', sqlalchemy.String(length=12), nullable=False),
+        sqlalchemy.Column('net_worth', sqlalchemy.Integer, nullable=False),
+        sqlalchemy.Column('birthday', sqlalchemy.Date, nullable=False),
+        sqlalchemy.Column('alive', sqlalchemy.Boolean(), nullable=True),
+        sqlalchemy.Column('parent', sqlalchemy.String(36), nullable=True),
+        sqlalchemy.Column('species', sqlalchemy.String(36), nullable=True),
+    )
+    tables['Species'] = sqlalchemy.Table(
+        'Species',
+        sqlalchemy_metadata,
+        sqlalchemy.Column('uuid', sqlalchemy.String(36), primary_key=True),
+        sqlalchemy.Column('name', sqlalchemy.String(length=12), nullable=False),
+    )
+    tables['Event'] = sqlalchemy.Table(
+        'Event',
+        sqlalchemy_metadata,
+        sqlalchemy.Column('uuid', sqlalchemy.String(36), primary_key=True),
+        sqlalchemy.Column('event_date', sqlalchemy.DateTime, nullable=False),
+    )
+    tables['Entity'] = sqlalchemy.Table(
+        'Entity',
+        sqlalchemy_metadata,
+        sqlalchemy.Column('uuid', sqlalchemy.String(36), primary_key=True),
+        sqlalchemy.Column('name', sqlalchemy.String(length=12), nullable=False),
+    )
+
+    edges = {
+        'Animal': {
+            'out_Animal_ParentOf': {
+                'to_table': 'Animal',
+                'from_column': 'parent',
+                'to_column': 'uuid',
+            },
+            'out_Animal_OfSpecies': {
+                'to_table': 'Species',
+                'from_column': 'species',
+                'to_column': 'uuid',
+            }
+        },
+    }
+
+    return tables, edges
+
 
 
 def generate_schema_graph(graph_client):

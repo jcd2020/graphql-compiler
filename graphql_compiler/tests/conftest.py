@@ -51,7 +51,7 @@ def _init_graph_client(load_schema_func, generate_data_func):
 
 
 @pytest.fixture(scope='class')
-def graph_client(request, init_snapshot_graph_client):
+def snapshot_graph_client(request, init_snapshot_graph_client):
     """Get a client for an initialized db, with all test data imported."""
     request.cls.graph_client = init_snapshot_graph_client
 
@@ -75,10 +75,12 @@ def sql_integration_data(request):
     }
     request.cls.sql_metadata = sql_metadata
     # yield the fixture to allow testing class to run
-    yield
-    # tear down the fixture after the testing class runs all tests
-    # including rolling back transaction to ensure all fixture data removed.
-    tear_down_integration_test_backends(sql_test_backends)
+    try:
+        yield
+    finally:
+        # tear down the fixture after the testing class runs all tests
+        # including rolling back transaction to ensure all fixture data removed.
+        tear_down_integration_test_backends(sql_test_backends)
 
 
 def pytest_addoption(parser):

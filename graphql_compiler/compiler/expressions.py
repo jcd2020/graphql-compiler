@@ -121,6 +121,9 @@ class Literal(Expression):
     to_gremlin = _to_output_code
     to_match = _to_output_code
 
+    def to_sql(self, aliases, current_alias):
+        return self.value
+
 
 NullLiteral = Literal(None)
 TrueLiteral = Literal(True)
@@ -217,6 +220,13 @@ class Variable(Expression):
         else:
             return six.text_type(self.variable_name)
 
+    def to_sql(self, aliases, current_alias):
+        self.validate()
+
+        from sqlalchemy import bindparam
+        expanding = isinstance(self.inferred_type, GraphQLList)
+        return bindparam(self.variable_name[1:], expanding=expanding)
+
     def __eq__(self, other):
         """Return True if the given object is equal to this one, and False otherwise."""
         # Since this object has a GraphQL type as a variable, which doesn't implement
@@ -233,12 +243,21 @@ class Variable(Expression):
 class LocalField(Expression):
     """A field at the current position in the query."""
 
-    __slots__ = ('field_name',)
+    __slots__ = ('field_name', 'field_type')
 
-    def __init__(self, field_name):
-        """Construct a new LocalField object that references a field at the current position."""
-        super(LocalField, self).__init__(field_name)
+    def __init__(self, field_name, field_type):
+        """Construct a new LocalField object that references a field at the current position.
+
+        Args:
+            field_name: string, the name of the local field being referenced
+            field_type: GraphQLType object describing the type of the referenced field. For some
+                        special fields (such as OrientDB "@this" or "@rid"), we may be unable to
+                        represent the field type in the GraphQL type system. In these situations,
+                        this value is set to None.
+        """
+        super(LocalField, self).__init__(field_name, field_type)
         self.field_name = field_name
+        self.field_type = field_type
         self.validate()
 
     def get_local_object_gremlin_name(self):
@@ -248,6 +267,8 @@ class LocalField(Expression):
     def validate(self):
         """Validate that the LocalField is correctly representable."""
         validate_safe_string(self.field_name)
+        if self.field_type is not None and not is_graphql_type(self.field_type):
+            raise ValueError(u'Invalid value {} of "field_type": {}'.format(self.field_type, self))
 
     def to_match(self):
         """Return a unicode object with the MATCH representation of this LocalField."""
@@ -267,6 +288,18 @@ class LocalField(Expression):
             return u'{}[\'{}\']'.format(local_object_name, self.field_name)
         else:
             return u'{}.{}'.format(local_object_name, self.field_name)
+
+    def to_sql(self, aliases, current_alias):
+        self.validate()
+
+        if isinstance(self.field_type, GraphQLList):
+            raise NotImplementedError(u'We dont support lists yet')
+
+        if '@' in self.field_name:
+            raise NotImplementedError(u'We dont support __typename yet')
+
+        return current_alias.c[self.field_name]
+
 
 
 class GlobalContextField(Expression):
@@ -316,6 +349,9 @@ class GlobalContextField(Expression):
         raise AssertionError(u'GlobalContextField is only used for the WHERE statement in '
                              u'MATCH. This function should not be called.')
 
+    def to_sql(self, aliases, current_alias):
+        raise NotIMplementedError()
+
 
 class ContextField(Expression):
     """A field drawn from the global context, e.g. if selected earlier in the query."""
@@ -363,6 +399,7 @@ class ContextField(Expression):
             return u'$matched.%s.%s' % (mark_name, field_name)
 
     def to_gremlin(self):
+
         """Return a unicode object with the Gremlin representation of this expression."""
         self.validate()
 
@@ -380,6 +417,9 @@ class ContextField(Expression):
         validate_safe_string(mark_name)
 
         return template.format(mark_name=mark_name, field_name=field_name)
+
+    def to_sql(self, aliases, current_alias):
+        raise NotImplementedError()
 
 
 class OutputContextField(Expression):
@@ -468,6 +508,16 @@ class OutputContextField(Expression):
 
         return template.format(mark_name=mark_name, field_name=field_name,
                                format=format_value)
+
+    def to_sql(self, aliases, current_alias):
+        if isinstance(self.field_type, GraphQLList):
+            raise NotImplementedError(u'We dont support lists yet')
+
+        if '@' in self.location.field:
+            raise NotImplementedError(u'We dont support __typename yet')
+
+        alias = aliases[self.location.at_vertex().query_path]
+        return alias.c.get(self.location.field)
 
     def __eq__(self, other):
         """Return True if the given object is equal to this one, and False otherwise."""
@@ -747,7 +797,7 @@ class BinaryComposition(Expression):
 
     SUPPORTED_OPERATORS = frozenset({
         u'=', u'!=', u'>=', u'<=', u'>', u'<', u'+', u'||', u'&&',
-        u'contains', u'intersects', u'has_substring', u'LIKE', u'INSTANCEOF',
+        u'contains', u'not_contains', u'intersects', u'has_substring', u'LIKE', u'INSTANCEOF',
     })
 
     __slots__ = ('operator', 'left', 'right')
@@ -800,6 +850,7 @@ class BinaryComposition(Expression):
         regular_operator_format = '(%(left)s %(operator)s %(right)s)'
         inverted_operator_format = '(%(right)s %(operator)s %(left)s)'  # noqa
         intersects_operator_format = '(%(operator)s(%(left)s, %(right)s).asList().size() > 0)'
+        negated_regular_operator_format = '(NOT (%(left)s %(operator)s %(right)s))'
         # pylint: enable=unused-variable
 
         # Null literals use the OrientDB 'IS/IS NOT' (in)equality operators,
@@ -821,6 +872,7 @@ class BinaryComposition(Expression):
                 u'||': (u'OR', regular_operator_format),
                 u'&&': (u'AND', regular_operator_format),
                 u'contains': (u'CONTAINS', regular_operator_format),
+                u'not_contains': (u'CONTAINS', negated_regular_operator_format),
                 u'intersects': (u'intersect', intersects_operator_format),
                 u'has_substring': (None, None),  # must be lowered into compatible form using LIKE
 
@@ -845,6 +897,7 @@ class BinaryComposition(Expression):
         immediate_operator_format = u'({left} {operator} {right})'
         dotted_operator_format = u'{left}.{operator}({right})'
         intersects_operator_format = u'(!{left}.{operator}({right}).empty)'
+        negated_dotted_operator_format = u'!{left}.{operator}({right})'
 
         translation_table = {
             u'=': (u'==', immediate_operator_format),
@@ -857,6 +910,7 @@ class BinaryComposition(Expression):
             u'||': (u'||', immediate_operator_format),
             u'&&': (u'&&', immediate_operator_format),
             u'contains': (u'contains', dotted_operator_format),
+            u'not_contains': (u'contains', negated_dotted_operator_format),
             u'intersects': (u'intersect', intersects_operator_format),
             u'has_substring': (u'contains', dotted_operator_format),
         }
@@ -869,6 +923,30 @@ class BinaryComposition(Expression):
         return format_spec.format(operator=gremlin_operator,
                                   left=self.left.to_gremlin(),
                                   right=self.right.to_gremlin())
+
+    def to_sql(self, aliases, current_alias):
+        self.validate()
+
+        import operator
+        from sqlalchemy import sql
+        translation_table = {
+            u'=': operator.__eq__,
+            u'!=': operator.__ne__,
+            u'<': operator.__lt__,
+            u'>': operator.__gt__,
+            u'<=': operator.__le__,
+            u'>=': operator.__ge__,
+            u'&&': sql.expression.and_,
+            u'||': sql.expression.or_,
+            u'has_substring': sql.schema.Column.contains,
+            u'contains': lambda x, y: y.in_(x),
+            u'not_contains': lambda x, y: y.notin_(x),
+            u'intersects': lambda x, y: raise_(NotImplementedError()),
+        }
+        return translation_table[self.operator](
+            self.left.to_sql(aliases, current_alias),
+            self.right.to_sql(aliases, current_alias),
+        )
 
 
 class TernaryConditional(Expression):

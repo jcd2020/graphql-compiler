@@ -6,6 +6,7 @@ from graphql.type import GraphQLID
 from graphql.utils.schema_printer import print_schema
 from parameterized import parameterized
 import pytest
+import datetime
 
 from ...schema_generation.orientdb.schema_properties import ORIENTDB_BASE_VERTEX_CLASS_NAME
 from ...tests import test_backend
@@ -21,10 +22,10 @@ from .integration_test_helpers import (
 # the list of backends to test against with the full @parametrized.expand([...]) decorator.
 all_backends = parameterized.expand([
     test_backend.ORIENTDB,
-    test_backend.POSTGRES,
-    test_backend.MARIADB,
-    test_backend.MYSQL,
-    test_backend.SQLITE,
+    # test_backend.POSTGRES,
+    # test_backend.MARIADB,
+    # test_backend.MYSQL,
+    # test_backend.SQLITE,
     test_backend.MSSQL,
 ])
 
@@ -126,6 +127,44 @@ class IntegrationTests(TestCase):
 
     @all_backends
     @integration_fixtures
+    def test_simple_filter_on_uid_field(self, backend_name):
+        graphql_query = '''
+        {
+            Animal {
+                name @output(out_name: "animal_name")
+                uuid @filter(op_name: "=", value: ["$uuid"])
+            }
+        }
+        '''
+        parameters = {
+            'uuid': 'cfc6e625-8594-0927-468f-f53d864a7a51',
+        }
+        expected_results = [
+            {'animal_name': 'Animal 1'},
+        ]
+
+        self.assertResultsEqual(graphql_query, parameters, backend_name, expected_results)
+
+    @integration_fixtures
+    def test_edge_from_superclass_with_preferred_location_not_at_root(self):
+        graphql_query = '''{
+            Animal {
+                name @output(out_name: "animal_name")
+                out_Entity_Related {
+                    name @output(out_name: "related_animal_name")
+                    alias @filter(op_name: "contains", value: ["$name"])
+                }
+            }
+        }'''
+        parameters = {
+            'name': 'Species 2',
+        }
+        expected_results = []
+
+        self.assertResultsEqual(graphql_query, parameters, test_backend.ORIENTDB, expected_results)
+
+    @all_backends
+    @integration_fixtures
     def test_two_filters(self, backend_name):
         graphql_query = '''
             {
@@ -170,6 +209,70 @@ class IntegrationTests(TestCase):
             {'animal_name': 'Animal 3'},
         ]
         self.assertResultsEqual(graphql_query, parameters, backend_name, expected_results)
+
+    @all_backends
+    @integration_fixtures
+    def test_filter_on_date(self, backend_name):
+        graphql_query = '''
+        {
+            Animal {
+                name @output(out_name: "animal_name")
+                birthday @filter(op_name: "=", value: ["$birthday"])
+            }
+        }
+        '''
+        if backend_name == test_backend.ORIENTDB:
+            return
+        parameters = {
+            'birthday': datetime.date(1975, 3, 3),
+        }
+        expected_results = [
+            {'animal_name': 'Animal 3'},
+        ]
+        self.assertResultsEqual(graphql_query, parameters, backend_name, expected_results)
+
+    @all_backends
+    @integration_fixtures
+    def test_filter_on_datetime(self, backend_name):
+        graphql_query = '''
+        {
+            Event {
+                uuid @output(out_name: "uuid")
+                event_date @filter(op_name: "=", value: ["$datetime"])
+            }
+        }
+        '''
+        if backend_name == test_backend.ORIENTDB:
+            return
+        parameters = {
+            'datetime': datetime.datetime(2000, 1, 1, 1, 1, 1),
+        }
+        expected_results = [
+            {'uuid': 'cfc6e625-8594-0927-468f-f53d864a7a55'},
+        ]
+        self.assertResultsEqual(graphql_query, parameters, backend_name, expected_results)
+
+    @all_backends
+    @integration_fixtures
+    def test_filter_on_boolean(self, backend_name):
+        graphql_query = '''
+        {
+            Animal {
+                name @output(out_name: "animal_name")
+                alive @filter(op_name: "=", value: ["$is_alive"])
+            }
+        }
+        '''
+        if backend_name == test_backend.ORIENTDB:
+            return
+        parameters = {
+            'is_alive': True,
+        }
+        expected_results = [
+            {'animal_name': 'Animal 1'},
+        ]
+        self.assertResultsEqual(graphql_query, parameters, backend_name, expected_results)
+
 
     @integration_fixtures
     def test_snapshot_graphql_schema_from_orientdb_schema(self):
