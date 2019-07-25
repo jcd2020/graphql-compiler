@@ -283,7 +283,7 @@ def get_sql_metadata():
         sqlalchemy_metadata,
         sqlalchemy.Column('uuid', sqlalchemy.String(36), primary_key=True),
         sqlalchemy.Column('name', sqlalchemy.String(length=12), nullable=False),
-        sqlalchemy.Column('net_worth', sqlalchemy.Integer, nullable=False),
+        sqlalchemy.Column('net_worth', sqlalchemy.Integer, nullable=True),
         sqlalchemy.Column('birthday', sqlalchemy.Date, nullable=False),
         sqlalchemy.Column('alive', sqlalchemy.Boolean(), nullable=True),
         sqlalchemy.Column('parent', sqlalchemy.String(36), nullable=True),
