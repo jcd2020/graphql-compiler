@@ -6,6 +6,7 @@ from graphql.type import GraphQLID
 from graphql.utils.schema_printer import print_schema
 from parameterized import parameterized
 import pytest
+import datetime
 
 from ...schema_generation.orientdb.schema_properties import ORIENTDB_BASE_VERTEX_CLASS_NAME
 from ...tests import test_backend
@@ -220,7 +221,6 @@ class IntegrationTests(TestCase):
             }
         }
         '''
-        import datetime
         if backend_name == test_backend.ORIENTDB:
             return
         parameters = {
@@ -228,6 +228,69 @@ class IntegrationTests(TestCase):
         }
         expected_results = [
             {'animal_name': 'Animal 3'},
+        ]
+        self.assertResultsEqual(graphql_query, parameters, backend_name, expected_results)
+
+    @all_backends
+    @integration_fixtures
+    def test_filter_on_datetime(self, backend_name):
+        graphql_query = '''
+        {
+            Event {
+                uuid @output(out_name: "uuid")
+                event_date @filter(op_name: "=", value: ["$datetime"])
+            }
+        }
+        '''
+        if backend_name == test_backend.ORIENTDB:
+            return
+        parameters = {
+            'datetime': datetime.datetime(2000, 1, 1, 1, 1, 1),
+        }
+        expected_results = [
+            {'uuid': 'cfc6e625-8594-0927-468f-f53d864a7a55'},
+        ]
+        self.assertResultsEqual(graphql_query, parameters, backend_name, expected_results)
+
+    @all_backends
+    @integration_fixtures
+    def test_filter_on_boolean(self, backend_name):
+        graphql_query = '''
+        {
+            Animal {
+                name @output(out_name: "animal_name")
+                alive @filter(op_name: "=", value: ["$is_alive"])
+            }
+        }
+        '''
+        if backend_name == test_backend.ORIENTDB:
+            return
+        parameters = {
+            'is_alive': True,
+        }
+        expected_results = [
+            {'animal_name': 'Animal 1'},
+        ]
+        self.assertResultsEqual(graphql_query, parameters, backend_name, expected_results)
+
+    @all_backends
+    @integration_fixtures
+    def test_filter_on_null(self, backend_name):
+        graphql_query = '''
+        {
+            Animal {
+                name @output(out_name: "animal_name")
+                net_worth @filter(op_name: "=", value: ["$net_worth"])
+            }
+        }
+        '''
+        if backend_name != test_backend.MSSQL:
+            return
+        parameters = {
+            'net_worth': None,
+        }
+        expected_results = [
+            {'animal_name': 'Animal 5'},
         ]
         self.assertResultsEqual(graphql_query, parameters, backend_name, expected_results)
 
