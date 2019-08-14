@@ -134,22 +134,6 @@ def emit_sql(ir_blocks, query_metadata_table, compiler_metadata):
     return sqlalchemy.select(outputs).select_from(from_clause).where(sqlalchemy.and_(*filters))
 
 
-def validate_scalar_parameter(value, sqlalchemy_type):
-    """Validate that the value matches the expected python type for the given SQLAlchemy type."""
-    # This SQLAlchemy type does not have a python_type implementation.
-    if isinstance(sqlalchemy_type, mssql.UNIQUEIDENTIFIER):
-        if not isinstance(value, str):
-            raise GraphQLCompilationError('Param {} is not of the expected type {}.'
-                                          .format(value, str))
-    # This SQLAlchemy type does not have a python_type implementation.
-    elif isinstance(sqlalchemy_type, mssql.BIT):
-        if not isinstance(value, bool):
-            raise GraphQLCompilationError('Param {} is not of the expected type {}.'
-                                          .format(value, bool))
-    elif not isinstance(value, sqlalchemy_type.python_object):
-        raise GraphQLCompilationError('Param {} is not of the expected type {}.'
-                                      .format(value, str(bindparam.type.python_object)))
-
 def print_mssql_query(statement):
     """
     Print a query, with values filled in for debugging purposes *only* for security, you should
@@ -163,22 +147,10 @@ def print_mssql_query(statement):
                 self, bindparam, within_columns_clause=False,
                 literal_binds=False, **kwargs
         ):
-            return super(LiteralCompiler, self).render_literal_bindparam(
+            return self.render_literal_bindparam(
                     bindparam, within_columns_clause=within_columns_clause,
                     literal_binds=literal_binds, **kwargs
             )
-
-        def render_literal_bindparam(self, bindparam, **kw):
-            value = bindparam.effective_value
-            if isinstance(value, list):
-                for sub_value in value:
-                    if isinstance(sub_value, list):
-                        raise GraphQLCompilationError('Param {} is a nested list. No nested lists '
-                                                      'allowed'.format(bindparam.key))
-                    validate_scalar_parameter(sub_value, bindparam.type)
-            else:
-                validate_scalar_parameter(value, bindparam.type)
-            return self.render_literal_value(value, bindparam.type)
 
         def render_literal_value(self, value, type_):
             if isinstance(value, (list, tuple)):

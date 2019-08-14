@@ -2,6 +2,7 @@
 from collections import OrderedDict
 from datetime import date, datetime
 from decimal import Decimal
+from itertools import chain
 
 import arrow
 from graphql import (
@@ -282,6 +283,12 @@ GraphQLDecimal = GraphQLScalarType(
     parse_literal=_unused_function,  # We don't yet support parsing Decimal objects in literals.
 )
 
+CUSTOM_SCALAR_TYPES = (
+    GraphQLDecimal,
+    GraphQLDate,
+    GraphQLDateTime,
+)
+
 DIRECTIVES = (
     FilterDirective,
     TagDirective,
@@ -366,3 +373,19 @@ def _check_for_nondefault_directive_names(directives):
     if nondefault_directives_found != set():
         raise AssertionError(u'Unexpected non-default directives found: {}'.format(
             nondefault_directives_found))
+    # Include compiler-supported directives, and the default directives GraphQL defines.
+    expected_directive_names = {
+        directive.name
+        for directive in chain(DIRECTIVES, specified_directives)
+    }
+
+    directive_names = {
+        directive.name
+        for directive in directives
+    }
+
+    nondefault_directives_found = directive_names - expected_directive_names
+    if nondefault_directives_found:
+        raise AssertionError(
+            u'Unsupported directives found: {}'
+            .format(nondefault_directives_found))

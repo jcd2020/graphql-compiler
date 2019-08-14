@@ -11,18 +11,11 @@ from ...cost_estimation.filter_selectivity_utils import (
     ABSOLUTE_SELECTIVITY, FRACTIONAL_SELECTIVITY, Selectivity, _combine_filter_selectivities,
     _get_filter_selectivity
 )
+from ...cost_estimation.statistics import LocalStatistics
 from ..test_helpers import generate_schema_graph
 
 
-def create_lookup_counts(count_data):
-    """Create lookup_counts function for use in estimating query cost."""
-    def lookup_counts(name):
-        """Lookup the total number of instances and subinstances of a given class name."""
-        return count_data[name]
-    return lookup_counts
-
-
-# The following TestCase class uses the 'snapshot_graph_client' fixture
+# The following TestCase class uses the 'snapshot_orientdb_client' fixture
 # which pylint does not recognize as a class member.
 # pylint: disable=no-member
 @pytest.mark.slow
@@ -30,38 +23,38 @@ class CostEstimationTests(unittest.TestCase):
     """Test the cost estimation module using standard input data when possible."""
 
     # TODO: These tests can be sped up by having an existing test SchemaGraph object.
-    @pytest.mark.usefixtures('snapshot_graph_client')
+    @pytest.mark.usefixtures('snapshot_orientdb_client')
     def test_root_count(self):
         """"Ensure we correctly estimate the cardinality of the query root."""
-        schema_graph = generate_schema_graph(self.graph_client)
+        schema_graph = generate_schema_graph(self.orientdb_client)
         test_data = test_input_data.immediate_output()
 
         count_data = {
             'Animal': 3,
         }
-        lookup_counts = create_lookup_counts(count_data)
+        statistics = LocalStatistics(count_data)
 
         cardinality_estimate = estimate_query_result_cardinality(
-            schema_graph, lookup_counts, test_data.graphql_input, dict()
+            schema_graph, statistics, test_data.graphql_input, dict()
         )
         expected_cardinality_estimate = 3.0
 
         self.assertEqual(expected_cardinality_estimate, cardinality_estimate)
 
-    @pytest.mark.usefixtures('snapshot_graph_client')
+    @pytest.mark.usefixtures('snapshot_orientdb_client')
     def test_traverse(self):
         """Ensure we correctly estimate cardinality over edges."""
-        schema_graph = generate_schema_graph(self.graph_client)
+        schema_graph = generate_schema_graph(self.orientdb_client)
         test_data = test_input_data.traverse_and_output()
 
         count_data = {
             'Animal': 3,
             'Animal_ParentOf': 5,
         }
-        lookup_counts = create_lookup_counts(count_data)
+        statistics = LocalStatistics(count_data)
 
         cardinality_estimate = estimate_query_result_cardinality(
-            schema_graph, lookup_counts, test_data.graphql_input, dict()
+            schema_graph, statistics, test_data.graphql_input, dict()
         )
         # For each Animal, there are on average 5.0 / 3.0 Animal_ParentOf edges, so we expect
         # 3.0 * (5.0 / 3.0) results.
@@ -69,10 +62,10 @@ class CostEstimationTests(unittest.TestCase):
 
         self.assertAlmostEqual(expected_cardinality_estimate, cardinality_estimate)
 
-    @pytest.mark.usefixtures('snapshot_graph_client')
+    @pytest.mark.usefixtures('snapshot_orientdb_client')
     def test_fragment(self):
         """Ensure we correctly adjust for fragments."""
-        schema_graph = generate_schema_graph(self.graph_client)
+        schema_graph = generate_schema_graph(self.orientdb_client)
         test_data = test_input_data.simple_union()
 
         count_data = {
@@ -81,10 +74,10 @@ class CostEstimationTests(unittest.TestCase):
             'Food': 11,
             'FoodOrSpecies': 14,
         }
-        lookup_counts = create_lookup_counts(count_data)
+        statistics = LocalStatistics(count_data)
 
         cardinality_estimate = estimate_query_result_cardinality(
-            schema_graph, lookup_counts, test_data.graphql_input, dict()
+            schema_graph, statistics, test_data.graphql_input, dict()
         )
         # For each Animal, we expect 5.0 / 3.0 out_Species_Eats edges. Out of those FoodOrSpecies,
         # we expect 11.0 / 14.0 to be Food, so overall we expect 3.0 * (5.0 / 3.0) * (11.0 / 14.0)
@@ -92,10 +85,10 @@ class CostEstimationTests(unittest.TestCase):
 
         self.assertAlmostEqual(expected_cardinality_estimate, cardinality_estimate)
 
-    @pytest.mark.usefixtures('snapshot_graph_client')
+    @pytest.mark.usefixtures('snapshot_orientdb_client')
     def test_complex_traverse(self):
         """Ensure we correctly handle more complicated arrangements of traversals."""
-        schema_graph = generate_schema_graph(self.graph_client)
+        schema_graph = generate_schema_graph(self.orientdb_client)
         graphql_input = '''{
             Animal {
                 in_Entity_Related {
@@ -123,10 +116,10 @@ class CostEstimationTests(unittest.TestCase):
             'Animal_BornAt': 13,
             'BirthEvent': 17
         }
-        lookup_counts = create_lookup_counts(count_data)
+        statistics = LocalStatistics(count_data)
 
         cardinality_estimate = estimate_query_result_cardinality(
-            schema_graph, lookup_counts, graphql_input, dict()
+            schema_graph, statistics, graphql_input, dict()
         )
 
         # For each Animal, we expect 3.0 / 19.0 in_Entity_Related edges, 5.0 / 47.0 of which are
@@ -138,10 +131,167 @@ class CostEstimationTests(unittest.TestCase):
         )
         self.assertAlmostEqual(expected_cardinality_estimate, cardinality_estimate)
 
-    @pytest.mark.usefixtures('snapshot_graph_client')
+    @pytest.mark.usefixtures('snapshot_orientdb_client')
+    def test_traversal_provided_both_statistics(self):
+        """Test type coercion provided both class_counts and vertex_edge_vertex_counts."""
+        schema_graph = generate_schema_graph(self.orientdb_client)
+        graphql_input = '''{
+            Animal {
+                out_Entity_Related {
+                    ... on Event {
+                        uuid @output(out_name: "event_id")
+                    }
+                }
+            }
+        }'''
+        params = {}
+
+        count_data = {
+            'Entity': 19,
+            'Animal': 3,
+            'Event': 7,
+            'Entity_Related': 11
+        }
+        vertex_edge_vertex_data = {
+            ('Animal', 'Entity_Related', 'Event'): 2
+        }
+        statistics = LocalStatistics(
+            count_data, vertex_edge_vertex_counts=vertex_edge_vertex_data
+        )
+
+        cardinality_estimate = estimate_query_result_cardinality(
+            schema_graph, statistics, graphql_input, params
+        )
+
+        # For each Animal, vertex_edge_vertex counts tell us we should expect (2.0 / 3.0) Events
+        # when traversing using Entity_Related. This totals to 3.0 * (2.0 / 3.0) results.
+        expected_cardinality_estimate = 3.0 * (2.0 / 3.0)
+        self.assertAlmostEqual(expected_cardinality_estimate, cardinality_estimate)
+
+    @pytest.mark.usefixtures('snapshot_orientdb_client')
+    def test_traversal_with_no_results(self):
+        """Test type coercion where no results should be expected."""
+        schema_graph = generate_schema_graph(self.orientdb_client)
+        graphql_input = '''{
+            Animal {
+                out_Entity_Related {
+                    ... on Event {
+                        uuid @output(out_name: "event_id")
+                    }
+                }
+            }
+        }'''
+        params = {}
+
+        count_data = {
+            'Entity': 19,
+            'Animal': 3,
+            'Event': 7,
+            'Entity_Related': 11
+        }
+        vertex_edge_vertex_data = {
+            ('Animal', 'Entity_Related', 'Event'): 0
+        }
+        statistics = LocalStatistics(
+            count_data, vertex_edge_vertex_counts=vertex_edge_vertex_data
+        )
+
+        cardinality_estimate = estimate_query_result_cardinality(
+            schema_graph, statistics, graphql_input, params
+        )
+
+        # Vertex_edge_vertex_data tells us that no Entity_Related edges connect Animals and Events,
+        # so the result set is empty.
+        expected_cardinality_estimate = 0.0
+        self.assertAlmostEqual(expected_cardinality_estimate, cardinality_estimate)
+
+    @pytest.mark.usefixtures('snapshot_orientdb_client')
+    def test_traversal_in_inbound_direction_provided_both_statistics(self):
+        """Test traversal in inbound direction provided multiple statistics."""
+        schema_graph = generate_schema_graph(self.orientdb_client)
+        graphql_input = '''{
+            Event {
+                in_Entity_Related {
+                    ... on Animal {
+                        uuid @output(out_name: "animal_id")
+                    }
+                }
+            }
+        }'''
+        params = {}
+
+        count_data = {
+            'Entity': 19,
+            'Animal': 3,
+            'Event': 7,
+            'Entity_Related': 11
+        }
+        vertex_edge_vertex_data = {
+            ('Animal', 'Entity_Related', 'Event'): 2
+        }
+        statistics = LocalStatistics(
+            count_data, vertex_edge_vertex_counts=vertex_edge_vertex_data
+        )
+
+        cardinality_estimate = estimate_query_result_cardinality(
+            schema_graph, statistics, graphql_input, params
+        )
+
+        # For each Event, vertex_edge_vertex_count tells us we should expect (2.0 / 7.0) Animals
+        # when traversing using Entity_Related. This totals to 7.0 * (2.0 / 7.0) result sets.
+        expected_cardinality_estimate = 7.0 * (2.0 / 7.0)
+        self.assertAlmostEqual(expected_cardinality_estimate, cardinality_estimate)
+
+    @pytest.mark.usefixtures('snapshot_orientdb_client')
+    def test_traversals_with_different_statistics_combination(self):
+        """Test two traversals, where one has vertex_edge_vertex counts and the other doesn't."""
+        schema_graph = generate_schema_graph(self.orientdb_client)
+        graphql_input = '''{
+            Animal {
+                out_Entity_Related {
+                    ... on Event {
+                        uuid @output(out_name: "event_id")
+                        out_Entity_Related {
+                            ... on Location {
+                                name @output(out_name: "location_name")
+                            }
+                        }
+                    }
+                }
+            }
+        }'''
+        params = {}
+
+        count_data = {
+            'Entity': 19,
+            'Animal': 3,
+            'Event': 7,
+            'Entity_Related': 11,
+            'Location': 13
+        }
+        vertex_edge_vertex_data = {
+            ('Animal', 'Entity_Related', 'Event'): 2
+        }
+        statistics = LocalStatistics(
+            count_data, vertex_edge_vertex_counts=vertex_edge_vertex_data
+        )
+
+        cardinality_estimate = estimate_query_result_cardinality(
+            schema_graph, statistics, graphql_input, params
+        )
+
+        # For each Animal, we expect (2.0 / 3.0) Events when traversing using Entity_Related edge.
+        # For each further Event, we estimate there are (11.0 / 19.0) outgoing Entity_Related
+        # edges. Of those, a total of (11.0 / 19.0) * (13.0 / 19.0) edges go into a Location.
+        # So our total is 3.0 * (2.0 / 3.0) * (11.0 / 19.0) * (13.0 / 19.0)
+
+        expected_cardinality_estimate = 3.0 * (2.0 / 3.0) * (11.0 / 19.0) * (13.0 / 19.0)
+        self.assertAlmostEqual(expected_cardinality_estimate, cardinality_estimate)
+
+    @pytest.mark.usefixtures('snapshot_orientdb_client')
     def test_optional(self):
         """Ensure we handle an optional edge correctly."""
-        schema_graph = generate_schema_graph(self.graph_client)
+        schema_graph = generate_schema_graph(self.orientdb_client)
         graphql_input = '''{
             Animal {
                 out_Animal_BornAt @optional {
@@ -158,10 +308,10 @@ class CostEstimationTests(unittest.TestCase):
             'Animal_BornAt': 7,
             'Animal_FedAt': 3,
         }
-        lookup_counts = create_lookup_counts(count_data)
+        statistics = LocalStatistics(count_data)
 
         cardinality_estimate = estimate_query_result_cardinality(
-            schema_graph, lookup_counts, graphql_input, dict()
+            schema_graph, statistics, graphql_input, dict()
         )
 
         # For each Animal, we expect 7.0 / 5.0 out_Animal_BornAt edges, yielding 5.0 * (7.0 / 5.0)
@@ -173,10 +323,10 @@ class CostEstimationTests(unittest.TestCase):
 
         self.assertAlmostEqual(expected_cardinality_estimate, cardinality_estimate)
 
-    @pytest.mark.usefixtures('snapshot_graph_client')
+    @pytest.mark.usefixtures('snapshot_orientdb_client')
     def test_optional_and_traverse(self):
         """Ensure traversals inside optionals are handled correctly."""
-        schema_graph = generate_schema_graph(self.graph_client)
+        schema_graph = generate_schema_graph(self.orientdb_client)
         graphql_input = '''{
             Animal {
                 in_Entity_Related @optional {
@@ -198,10 +348,10 @@ class CostEstimationTests(unittest.TestCase):
             'Species_Eats': 5,
             'Species': 97,
         }
-        lookup_counts = create_lookup_counts(count_data)
+        statistics = LocalStatistics(count_data)
 
         cardinality_estimate = estimate_query_result_cardinality(
-            schema_graph, lookup_counts, graphql_input, dict()
+            schema_graph, statistics, graphql_input, dict()
         )
 
         # For each Animal, we expect 23.0 / 11.0 * 7.0 / 11.0 * 5.0 / 13.0 = .511
@@ -218,10 +368,10 @@ class CostEstimationTests(unittest.TestCase):
             'Entity': 11,
             'Species_Eats': 17,
         }
-        lookup_counts = create_lookup_counts(count_data)
+        statistics = LocalStatistics(count_data)
 
         cardinality_estimate = estimate_query_result_cardinality(
-            schema_graph, lookup_counts, graphql_input, dict()
+            schema_graph, statistics, graphql_input, dict()
         )
 
         # For each Animal, we expect 23.0 / 11.0 * 7.0 / 11.0 * 17.0 / 13.0 = 1.74
@@ -229,10 +379,10 @@ class CostEstimationTests(unittest.TestCase):
         expected_cardinality_estimate = 3.0 * (23.0 / 11.0) * (7.0 / 11.0) * (17.0 / 13.0)
         self.assertAlmostEqual(expected_cardinality_estimate, cardinality_estimate)
 
-    @pytest.mark.usefixtures('snapshot_graph_client')
+    @pytest.mark.usefixtures('snapshot_orientdb_client')
     def test_fold(self):
         """Ensure we handle an folded edge correctly."""
-        schema_graph = generate_schema_graph(self.graph_client)
+        schema_graph = generate_schema_graph(self.orientdb_client)
         graphql_input = '''{
             Animal {
                 out_Animal_BornAt @fold {
@@ -248,11 +398,12 @@ class CostEstimationTests(unittest.TestCase):
             'Animal': 5,
             'Animal_BornAt': 7,
             'Animal_FedAt': 3,
+            'FeedingEvent': 11
         }
-        lookup_counts = create_lookup_counts(count_data)
+        statistics = LocalStatistics(count_data)
 
         cardinality_estimate = estimate_query_result_cardinality(
-            schema_graph, lookup_counts, graphql_input, dict()
+            schema_graph, statistics, graphql_input, dict()
         )
 
         # For each Animal, we expect 7.0 / 5.0 out_Animal_BornAt edges, yielding 5.0 * (7.0 / 5.0)
@@ -264,10 +415,10 @@ class CostEstimationTests(unittest.TestCase):
 
         self.assertAlmostEqual(expected_cardinality_estimate, cardinality_estimate)
 
-    @pytest.mark.usefixtures('snapshot_graph_client')
+    @pytest.mark.usefixtures('snapshot_orientdb_client')
     def test_fold_and_traverse(self):
         """Ensure traversals inside folds are handled correctly."""
-        schema_graph = generate_schema_graph(self.graph_client)
+        schema_graph = generate_schema_graph(self.orientdb_client)
         graphql_input = '''{
             Animal {
                 in_Entity_Related @fold {
@@ -288,10 +439,10 @@ class CostEstimationTests(unittest.TestCase):
             'Entity': 11,
             'Species_Eats': 5,
         }
-        lookup_counts = create_lookup_counts(count_data)
+        statistics = LocalStatistics(count_data)
 
         cardinality_estimate = estimate_query_result_cardinality(
-            schema_graph, lookup_counts, graphql_input, dict()
+            schema_graph, statistics, graphql_input, dict()
         )
 
         # For each Animal, we expect 23.0 / 11.0 * 7.0 / 11.0 * 5.0 / 13.0 = .511
@@ -308,10 +459,10 @@ class CostEstimationTests(unittest.TestCase):
             'Entity': 11,
             'Species_Eats': 17,
         }
-        lookup_counts = create_lookup_counts(count_data)
+        statistics = LocalStatistics(count_data)
 
         cardinality_estimate = estimate_query_result_cardinality(
-            schema_graph, lookup_counts, graphql_input, dict()
+            schema_graph, statistics, graphql_input, dict()
         )
 
         # For each Animal, we expect 23.0 / 11.0 * 7.0 / 11.0 * 17.0 / 13.0 = 1.74
@@ -319,10 +470,10 @@ class CostEstimationTests(unittest.TestCase):
         expected_cardinality_estimate = 3.0 * (23.0 / 11.0) * (7.0 / 11.0) * (17.0 / 13.0)
         self.assertAlmostEqual(expected_cardinality_estimate, cardinality_estimate)
 
-    @pytest.mark.usefixtures('snapshot_graph_client')
+    @pytest.mark.usefixtures('snapshot_orientdb_client')
     def test_recurse(self):
         """Ensure we handle recursion correctly."""
-        schema_graph = generate_schema_graph(self.graph_client)
+        schema_graph = generate_schema_graph(self.orientdb_client)
         graphql_input = '''{
             Animal {
                 out_Animal_ParentOf @recurse(depth: 2){
@@ -335,10 +486,10 @@ class CostEstimationTests(unittest.TestCase):
             'Animal': 7,
             'Animal_ParentOf': 11,
         }
-        lookup_counts = create_lookup_counts(count_data)
+        statistics = LocalStatistics(count_data)
 
         cardinality_estimate = estimate_query_result_cardinality(
-            schema_graph, lookup_counts, graphql_input, dict()
+            schema_graph, statistics, graphql_input, dict()
         )
 
         # For each Animal, we expect 11.0 / 7.0 "child" Animals. Since recurse first explores
@@ -347,10 +498,10 @@ class CostEstimationTests(unittest.TestCase):
         expected_cardinality_estimate = 7.0 * (11.0 / 7.0 + 1)
         self.assertAlmostEqual(expected_cardinality_estimate, cardinality_estimate)
 
-    @pytest.mark.usefixtures('snapshot_graph_client')
+    @pytest.mark.usefixtures('snapshot_orientdb_client')
     def test_recurse_and_traverse(self):
         """Ensure we handle traversals inside recurses correctly."""
-        schema_graph = generate_schema_graph(self.graph_client)
+        schema_graph = generate_schema_graph(self.orientdb_client)
         graphql_input = '''{
             Animal {
                 out_Animal_ParentOf @recurse(depth: 2){
@@ -367,10 +518,10 @@ class CostEstimationTests(unittest.TestCase):
             'Animal_ParentOf': 11,
             'Animal_BornAt': 13,
         }
-        lookup_counts = create_lookup_counts(count_data)
+        statistics = LocalStatistics(count_data)
 
         cardinality_estimate = estimate_query_result_cardinality(
-            schema_graph, lookup_counts, graphql_input, dict()
+            schema_graph, statistics, graphql_input, dict()
         )
 
         # For each Animal, we expect 11.0 / 7.0 "child" Animals. Since recurse first explores
@@ -380,11 +531,11 @@ class CostEstimationTests(unittest.TestCase):
         expected_cardinality_estimate = 7.0 * (11.0 / 7.0 + 1) * (13.0 / 7.0)
         self.assertAlmostEqual(expected_cardinality_estimate, cardinality_estimate)
 
-    @pytest.mark.usefixtures('snapshot_graph_client')
+    @pytest.mark.usefixtures('snapshot_orientdb_client')
     def test_single_filter(self):
         """Ensure we handle filters correctly."""
         # TODO: eventually, we should ensure other fractional/absolute selectivies work.
-        schema_graph = generate_schema_graph(self.graph_client)
+        schema_graph = generate_schema_graph(self.orientdb_client)
         graphql_input = '''{
             Animal {
                 uuid @filter(op_name: "=", value:["$uuid"])
@@ -398,20 +549,20 @@ class CostEstimationTests(unittest.TestCase):
         count_data = {
             'Animal': 3,
         }
-        lookup_counts = create_lookup_counts(count_data)
+        statistics = LocalStatistics(count_data)
 
         cardinality_estimate = estimate_query_result_cardinality(
-            schema_graph, lookup_counts, graphql_input, params
+            schema_graph, statistics, graphql_input, params
         )
 
         # When '='-filtering on a field that's uniquely indexed, expect exactly 1 result.
         expected_cardinality_estimate = 1.0
         self.assertAlmostEqual(expected_cardinality_estimate, cardinality_estimate)
 
-    @pytest.mark.usefixtures('snapshot_graph_client')
+    @pytest.mark.usefixtures('snapshot_orientdb_client')
     def test_traverse_and_filter(self):
         """Ensure we filters work correctly below the root location."""
-        schema_graph = generate_schema_graph(self.graph_client)
+        schema_graph = generate_schema_graph(self.orientdb_client)
         graphql_input = '''{
             Animal {
                 out_Animal_BornAt {
@@ -434,11 +585,15 @@ class CostEstimationTests(unittest.TestCase):
             'Event_RelatedEvent': 7,
             'Event': 17,
             'FeedingEvent': 11,
+            'BirthEvent': 13
         }
-        lookup_counts = create_lookup_counts(count_data)
+        vertex_edge_vertex_data = {
+            ('Animal', 'Animal_BornAt', 'BirthEvent'): 2
+        }
+        statistics = LocalStatistics(count_data, vertex_edge_vertex_counts=vertex_edge_vertex_data)
 
         cardinality_estimate = estimate_query_result_cardinality(
-            schema_graph, lookup_counts, graphql_input, params
+            schema_graph, statistics, graphql_input, params
         )
 
         # For each Animal, we expect exactly 1 BirthEvent. For each of these, we expect (7.0 / 17.0)
@@ -446,10 +601,10 @@ class CostEstimationTests(unittest.TestCase):
         expected_cardinality_estimate = 3.0 * 1.0 * (7.0 / 17.0) * (11.0 / 17.0)
         self.assertAlmostEqual(expected_cardinality_estimate, cardinality_estimate)
 
-    @pytest.mark.usefixtures('snapshot_graph_client')
+    @pytest.mark.usefixtures('snapshot_orientdb_client')
     def test_multiple_filters(self):
         """Ensure we handle multiple filters correctly."""
-        schema_graph = generate_schema_graph(self.graph_client)
+        schema_graph = generate_schema_graph(self.orientdb_client)
         graphql_input = '''{
             Animal @filter(op_name: "name_or_alias", value: ["$name"]) {
                 uuid @filter(op_name: "=", value:["$uuid"])
@@ -465,10 +620,10 @@ class CostEstimationTests(unittest.TestCase):
         count_data = {
             'Animal': 3,
         }
-        lookup_counts = create_lookup_counts(count_data)
+        statistics = LocalStatistics(count_data)
 
         cardinality_estimate = estimate_query_result_cardinality(
-            schema_graph, lookup_counts, graphql_input, params
+            schema_graph, statistics, graphql_input, params
         )
 
         # When '='-filtering on a field that's uniquely indexed, expect exactly 1 result. All other
@@ -476,10 +631,10 @@ class CostEstimationTests(unittest.TestCase):
         expected_cardinality_estimate = 1.0
         self.assertAlmostEqual(expected_cardinality_estimate, cardinality_estimate)
 
-    @pytest.mark.usefixtures('snapshot_graph_client')
+    @pytest.mark.usefixtures('snapshot_orientdb_client')
     def test_optional_and_filter(self):
         """Test an optional and filter on the same Location."""
-        schema_graph = generate_schema_graph(self.graph_client)
+        schema_graph = generate_schema_graph(self.orientdb_client)
         graphql_input = '''{
             Animal {
                 out_Animal_BornAt @optional {
@@ -502,11 +657,12 @@ class CostEstimationTests(unittest.TestCase):
             'Event_RelatedEvent': 11,
             'Event': 7,
             'FeedingEvent': 6,
+            'BirthEvent': 13
         }
-        lookup_counts = create_lookup_counts(count_data)
+        statistics = LocalStatistics(count_data)
 
         cardinality_estimate = estimate_query_result_cardinality(
-            schema_graph, lookup_counts, graphql_input, params
+            schema_graph, statistics, graphql_input, params
         )
 
         # For each Animal, we expect exactly 1 BirthEvent (rather than 2.0 / 5.0). For each of
@@ -517,10 +673,10 @@ class CostEstimationTests(unittest.TestCase):
         expected_cardinality_estimate = 5.0 * 1.0 * (11.0 / 7.0) * (6.0 / 7.0)
         self.assertAlmostEqual(expected_cardinality_estimate, cardinality_estimate)
 
-    @pytest.mark.usefixtures('snapshot_graph_client')
+    @pytest.mark.usefixtures('snapshot_orientdb_client')
     def test_optional_then_filter(self):
         """Test a filter within an optional scope."""
-        schema_graph = generate_schema_graph(self.graph_client)
+        schema_graph = generate_schema_graph(self.orientdb_client)
         graphql_input = '''{
             Animal {
                 out_Animal_BornAt @optional {
@@ -544,11 +700,12 @@ class CostEstimationTests(unittest.TestCase):
             'Event_RelatedEvent': 23,
             'Event': 7,
             'FeedingEvent': 6,
+            'BirthEvent': 13
         }
-        lookup_counts = create_lookup_counts(count_data)
+        statistics = LocalStatistics(count_data)
 
         cardinality_estimate = estimate_query_result_cardinality(
-            schema_graph, lookup_counts, graphql_input, params
+            schema_graph, statistics, graphql_input, params
         )
 
         # For each Animal, we expect exactly 2.0 / 5.0 BirthEvents. In general, for each of
@@ -559,10 +716,10 @@ class CostEstimationTests(unittest.TestCase):
         expected_cardinality_estimate = 5.0 * 1.0
         self.assertAlmostEqual(expected_cardinality_estimate, cardinality_estimate)
 
-    @pytest.mark.usefixtures('snapshot_graph_client')
+    @pytest.mark.usefixtures('snapshot_orientdb_client')
     def test_fold_and_filter(self):
         """Test an fold and filter on the same Location."""
-        schema_graph = generate_schema_graph(self.graph_client)
+        schema_graph = generate_schema_graph(self.orientdb_client)
         graphql_input = '''{
             Animal {
                 out_Animal_BornAt @fold {
@@ -585,11 +742,12 @@ class CostEstimationTests(unittest.TestCase):
             'Event_RelatedEvent': 11,
             'Event': 7,
             'FeedingEvent': 6,
+            'BirthEvent': 13
         }
-        lookup_counts = create_lookup_counts(count_data)
+        statistics = LocalStatistics(count_data)
 
         cardinality_estimate = estimate_query_result_cardinality(
-            schema_graph, lookup_counts, graphql_input, params
+            schema_graph, statistics, graphql_input, params
         )
 
         # For each Animal, we expect exactly 1 BirthEvent (rather than 2.0 / 5.0). For each of
@@ -600,10 +758,10 @@ class CostEstimationTests(unittest.TestCase):
         expected_cardinality_estimate = 5.0 * 1.0 * (11.0 / 7.0) * (6.0 / 7.0)
         self.assertAlmostEqual(expected_cardinality_estimate, cardinality_estimate)
 
-    @pytest.mark.usefixtures('snapshot_graph_client')
+    @pytest.mark.usefixtures('snapshot_orientdb_client')
     def test_fold_then_filter(self):
         """Test a filter within an fold scope."""
-        schema_graph = generate_schema_graph(self.graph_client)
+        schema_graph = generate_schema_graph(self.orientdb_client)
         graphql_input = '''{
             Animal {
                 out_Animal_BornAt @fold {
@@ -627,11 +785,12 @@ class CostEstimationTests(unittest.TestCase):
             'Event_RelatedEvent': 23,
             'Event': 7,
             'FeedingEvent': 6,
+            'BirthEvent': 11
         }
-        lookup_counts = create_lookup_counts(count_data)
+        statistics = LocalStatistics(count_data)
 
         cardinality_estimate = estimate_query_result_cardinality(
-            schema_graph, lookup_counts, graphql_input, params
+            schema_graph, statistics, graphql_input, params
         )
 
         # For each Animal, we expect exactly 2.0 / 5.0 BirthEvents. In general, for each of these,
@@ -642,10 +801,10 @@ class CostEstimationTests(unittest.TestCase):
         expected_cardinality_estimate = 5.0 * 1.0
         self.assertAlmostEqual(expected_cardinality_estimate, cardinality_estimate)
 
-    @pytest.mark.usefixtures('snapshot_graph_client')
+    @pytest.mark.usefixtures('snapshot_orientdb_client')
     def test_recurse_and_filter(self):
         """Test a filter that immediately follows a recursed edge."""
-        schema_graph = generate_schema_graph(self.graph_client)
+        schema_graph = generate_schema_graph(self.orientdb_client)
         graphql_input = '''{
             Animal {
                 out_Animal_ParentOf @recurse(depth: 2){
@@ -665,10 +824,10 @@ class CostEstimationTests(unittest.TestCase):
             'Animal_ParentOf': 11,
             'Animal_BornAt': 13,
         }
-        lookup_counts = create_lookup_counts(count_data)
+        statistics = LocalStatistics(count_data)
 
         cardinality_estimate = estimate_query_result_cardinality(
-            schema_graph, lookup_counts, graphql_input, params
+            schema_graph, statistics, graphql_input, params
         )
 
         # For each Animal, we expect 11.0 / 7.0 + 1 "child" Animals due to the recurse. Since
@@ -677,10 +836,10 @@ class CostEstimationTests(unittest.TestCase):
         expected_cardinality_estimate = 7.0 * 1.0 * (13.0 / 7.0)
         self.assertAlmostEqual(expected_cardinality_estimate, cardinality_estimate)
 
-    @pytest.mark.usefixtures('snapshot_graph_client')
+    @pytest.mark.usefixtures('snapshot_orientdb_client')
     def test_recurse_then_filter(self):
         """Test a filter that immediately follows a recursed edge."""
-        schema_graph = generate_schema_graph(self.graph_client)
+        schema_graph = generate_schema_graph(self.orientdb_client)
         graphql_input = '''{
             Animal {
                 out_Animal_ParentOf @recurse(depth: 2){
@@ -700,10 +859,10 @@ class CostEstimationTests(unittest.TestCase):
             'Animal_ParentOf': 11,
             'Animal_BornAt': 13,
         }
-        lookup_counts = create_lookup_counts(count_data)
+        statistics = LocalStatistics(count_data)
 
         cardinality_estimate = estimate_query_result_cardinality(
-            schema_graph, lookup_counts, graphql_input, params
+            schema_graph, statistics, graphql_input, params
         )
 
         # For each Animal, we expect 11.0 / 7.0 + 1 "child" Animals due to the recurse. Since
@@ -763,53 +922,79 @@ class FilterSelectivityUtilsTests(unittest.TestCase):
         expected_selectivity = Selectivity(kind=ABSOLUTE_SELECTIVITY, value=2.0)
         self.assertEqual(expected_selectivity, _combine_filter_selectivities(selectivities))
 
-    @pytest.mark.usefixtures('snapshot_graph_client')
+    @pytest.mark.usefixtures('snapshot_orientdb_client')
     def test_get_equals_filter_selectivity(self):
-        schema_graph = generate_schema_graph(self.graph_client)
+        schema_graph = generate_schema_graph(self.orientdb_client)
         classname = 'Animal'
 
-        def empty_lookup_counts(classname):
-            """Dummy function to pass into get_filter_selectivity."""
-            return 100
-
+        empty_statistics = LocalStatistics(dict())
         params = dict()
 
-        # If we '='-filter on a property that isn't an index return a fractional selectivity of 1.
+        # If we '='-filter on a property that isn't an index, with no distinct-field-values-count
+        # statistics, return a fractional selectivity of 1.
         filter_on_nonindex = FilterInfo(
             fields=('description',), op_name='=', args=('$description',)
         )
         selectivity = _get_filter_selectivity(
-            schema_graph, empty_lookup_counts, filter_on_nonindex, params, classname
+            schema_graph, empty_statistics, filter_on_nonindex, params, classname
         )
         expected_selectivity = Selectivity(kind=FRACTIONAL_SELECTIVITY, value=1.0)
         self.assertEqual(expected_selectivity, selectivity)
 
-        # If we '='-filter on a property that's non-uniquely
-        # indexed return a fractional selectivity of 1.
+        # If we '='-filter on a property that's non-uniquely indexed, with no
+        # distinct-field-values-count statistics, return a fractional selectivity of 1.
         nonunique_filter = FilterInfo(fields=('birthday',), op_name='=', args=('$birthday',))
         selectivity = _get_filter_selectivity(
-            schema_graph, empty_lookup_counts, nonunique_filter, params, classname
+            schema_graph, empty_statistics, nonunique_filter, params, classname
         )
         expected_selectivity = Selectivity(kind=FRACTIONAL_SELECTIVITY, value=1.0)
+        self.assertEqual(expected_selectivity, selectivity)
+
+        distinct_birthday_values_data = {
+            ('Animal', 'birthday'): 3
+        }
+        statistics_with_distinct_birthday_values_data = LocalStatistics(
+            dict(), distinct_field_values_counts=distinct_birthday_values_data
+        )
+        # If we '='-filter on a property that's non-uniquely indexed, but has only 3 distinct field
+        # values, return a fractional selectivity of 1.0 / 3.0.
+        nonunique_filter = FilterInfo(fields=('birthday',), op_name='=', args=('$birthday',))
+        selectivity = _get_filter_selectivity(
+            schema_graph, statistics_with_distinct_birthday_values_data,
+            nonunique_filter, params, classname
+        )
+        expected_selectivity = Selectivity(kind=FRACTIONAL_SELECTIVITY, value=1.0 / 3.0)
         self.assertEqual(expected_selectivity, selectivity)
 
         # If we '='-filter on a property that is uniquely indexed, expect exactly 1 result.
         unique_filter = FilterInfo(fields=('uuid',), op_name='=', args=('$uuid',))
         selectivity = _get_filter_selectivity(
-            schema_graph, empty_lookup_counts, unique_filter, params, classname
+            schema_graph, empty_statistics, unique_filter, params, classname
         )
         expected_selectivity = Selectivity(kind=ABSOLUTE_SELECTIVITY, value=1.0)
         self.assertEqual(expected_selectivity, selectivity)
 
-    @pytest.mark.usefixtures('snapshot_graph_client')
+        distinct_uuid_values_data = {
+            ('Animal', 'uuid'): 3
+        }
+        statistics_with_distinct_uuid_values_data = LocalStatistics(
+            dict(), distinct_field_values_counts=distinct_uuid_values_data
+        )
+        # If we '='-filter on a property that is both uniquely indexed, and has 3 distinct field
+        # values, expect exactly 1 result, since the index overrides the statistic.
+        unique_filter = FilterInfo(fields=('uuid',), op_name='=', args=('$uuid',))
+        selectivity = _get_filter_selectivity(
+            schema_graph, statistics_with_distinct_uuid_values_data,
+            unique_filter, params, classname
+        )
+        expected_selectivity = Selectivity(kind=ABSOLUTE_SELECTIVITY, value=1.0)
+        self.assertEqual(expected_selectivity, selectivity)
+
+    @pytest.mark.usefixtures('snapshot_orientdb_client')
     def test_get_in_collection_filter_selectivity(self):
-        schema_graph = generate_schema_graph(self.graph_client)
+        schema_graph = generate_schema_graph(self.orientdb_client)
         classname = 'Animal'
-
-        def empty_lookup_counts(classname):
-            """Dummy function to pass into get_filter_selectivity."""
-            return 100
-
+        empty_statistics = LocalStatistics(dict())
         nonunique_filter = FilterInfo(fields=('birthday',), op_name='in_collection',
                                       args=('$birthday_collection',))
         nonunique_params = {
@@ -818,10 +1003,38 @@ class FilterSelectivityUtilsTests(unittest.TestCase):
                 date(1999, 12, 31),
             ]
         }
-        # If we use an in_collection-filter on a property that is not uniquely indexed
-        # return a fractional selectivity of 1.
+        # If we use an in_collection-filter on a property that is not uniquely indexed, with no
+        # distinct_field_values_count statistic, return a fractional selectivity of 1.
         selectivity = _get_filter_selectivity(
-            schema_graph, empty_lookup_counts, nonunique_filter, nonunique_params, classname
+            schema_graph, empty_statistics, nonunique_filter, nonunique_params, classname
+        )
+        expected_selectivity = Selectivity(kind=FRACTIONAL_SELECTIVITY, value=1.0)
+        self.assertEqual(expected_selectivity, selectivity)
+
+        distinct_birthday_values_data = {
+            ('Animal', 'birthday'): 3
+        }
+        statistics_with_distinct_birthday_values_data = LocalStatistics(
+            dict(), distinct_field_values_counts=distinct_birthday_values_data
+        )
+        # If we use an in_collection-filter using a collection with 2 elements on a property that is
+        # not uniquely indexed, but has 3 distinct values, return a fractional
+        # selectivity of 2.0 / 3.0.
+        selectivity = _get_filter_selectivity(
+            schema_graph, statistics_with_distinct_birthday_values_data, nonunique_filter,
+            nonunique_params, classname
+        )
+        expected_selectivity = Selectivity(kind=FRACTIONAL_SELECTIVITY, value=2.0 / 3.0)
+        self.assertEqual(expected_selectivity, selectivity)
+
+        statistics_with_distinct_birthday_values_data = LocalStatistics(
+            dict(), distinct_birthday_values_data
+        )
+        # If we use an in_collection-filter with 4 elements on a property that is not uniquely
+        # indexed, but has 3 distinct values, return a fractional selectivity of 1.0.
+        selectivity = _get_filter_selectivity(
+            schema_graph, statistics_with_distinct_birthday_values_data, nonunique_filter,
+            nonunique_params, classname
         )
         expected_selectivity = Selectivity(kind=FRACTIONAL_SELECTIVITY, value=1.0)
         self.assertEqual(expected_selectivity, selectivity)
@@ -838,7 +1051,7 @@ class FilterSelectivityUtilsTests(unittest.TestCase):
         # If we use an in_collection-filter on a property that is uniquely indexed, expect as many
         # results as there are elements in the collection.
         selectivity = _get_filter_selectivity(
-            schema_graph, empty_lookup_counts, in_collection_filter, unique_params, classname
+            schema_graph, empty_statistics, in_collection_filter, unique_params, classname
         )
         expected_selectivity = Selectivity(kind=ABSOLUTE_SELECTIVITY, value=3.0)
         self.assertEqual(expected_selectivity, selectivity)

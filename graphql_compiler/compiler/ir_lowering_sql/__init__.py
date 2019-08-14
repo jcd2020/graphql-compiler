@@ -6,6 +6,17 @@ from ..ir_lowering_common.common import (extract_optional_location_root_info,
                                          optimize_boolean_expression_comparisons,
                                          remove_end_optionals)
 
+import six
+
+from .. import blocks
+from ...compiler import expressions
+from ...compiler.helpers import Location
+from ..metadata import LocationInfo
+
+
+##############
+# Public API #
+##############
 
 def lower_ir(ir_blocks, query_metadata_table, type_equivalence_hints=None):
     ir_blocks = lower_context_field_existence(ir_blocks, query_metadata_table)

@@ -1,19 +1,20 @@
 # Copyright 2017-present Kensho Technologies, LLC.
 import datetime
-from decimal import Decimal
 import unittest
+from decimal import Decimal
 
-from graphql import GraphQLBoolean, GraphQLFloat, GraphQLID, GraphQLInt, GraphQLList, GraphQLString
 import pytz
+from graphql import (
+    GraphQLBoolean, GraphQLFloat, GraphQLID, GraphQLInt, GraphQLList, GraphQLNonNull, GraphQLString
+)
 
+from .test_helpers import compare_gremlin, compare_match, get_schema
 from .. import graphql_to_gremlin, graphql_to_match
 from ..compiler import compile_graphql_to_gremlin, compile_graphql_to_match
 from ..exceptions import GraphQLInvalidArgumentError
 from ..query_formatting import insert_arguments_into_query
 from ..query_formatting.common import validate_argument_type
 from ..schema import GraphQLDate, GraphQLDateTime, GraphQLDecimal
-from .test_helpers import compare_gremlin, compare_match, get_schema
-
 
 EXAMPLE_GRAPHQL_QUERY = '''{
     Animal @filter(op_name: "name_or_alias", value: ["$wanted_name"]) {
@@ -199,3 +200,18 @@ class QueryFormattingTests(unittest.TestCase):
             for invalid_value in invalid_values:
                 with self.assertRaises(GraphQLInvalidArgumentError):
                     validate_argument_type(graphql_type, invalid_value)
+
+
+    def test_non_null_types_pass_validation(self):
+        type_and_value = [
+            (GraphQLString, 'abc'),  # sanity check
+            (GraphQLNonNull(GraphQLString), 'abc'),
+
+            (GraphQLList(GraphQLString), ['a', 'b', 'c']),  # sanity check
+            (GraphQLList(GraphQLNonNull(GraphQLString)), ['a', 'b', 'c']),
+            (GraphQLNonNull(GraphQLList(GraphQLString)), ['a', 'b', 'c']),
+            (GraphQLNonNull(GraphQLList(GraphQLNonNull(GraphQLString))), ['a', 'b', 'c']),
+        ]
+
+        for graphql_type, value in type_and_value:
+            validate_argument_type(graphql_type, value)
