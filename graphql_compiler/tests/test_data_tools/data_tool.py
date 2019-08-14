@@ -157,13 +157,6 @@ def generate_sql_integration_data(sql_test_backends):
             datetime.date(2000, 4, 4),
             False,
         ),
-        (
-            'cfc6e625-8594-0927-468f-f53d864a7a55',
-            'Animal 5',
-            None,
-            datetime.date(2000, 5, 5),
-            False,
-        ),
     )
     event_rows = (
         (

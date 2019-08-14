@@ -277,7 +277,9 @@ class IntegrationTests(TestCase):
         ]
         self.assertResultsEqual(graphql_query, parameters, backend_name, expected_results)
 
-    @use_all_backends()
+    # Datetime integration data missing for these backends.
+    @use_all_backends(except_backends=[test_backend.NEO4J, test_backend.ORIENTDB,
+                                       test_backend.REDISGRAPH])
     @integration_fixtures
     def test_filter_on_datetime(self, backend_name):
         graphql_query = '''
@@ -288,8 +290,6 @@ class IntegrationTests(TestCase):
             }
         }
         '''
-        if backend_name == test_backend.ORIENTDB:
-            return
         parameters = {
             'datetime': datetime.datetime(2000, 1, 1, 1, 1, 1),
         }
@@ -298,7 +298,9 @@ class IntegrationTests(TestCase):
         ]
         self.assertResultsEqual(graphql_query, parameters, backend_name, expected_results)
 
-    @use_all_backends()
+    # Boolean integration data missing for these backends.
+    @use_all_backends(except_backends=[test_backend.NEO4J, test_backend.ORIENTDB,
+                                       test_backend.REDISGRAPH])
     @integration_fixtures
     def test_filter_on_boolean(self, backend_name):
         graphql_query = '''
@@ -314,27 +316,6 @@ class IntegrationTests(TestCase):
         }
         expected_results = [
             {'animal_name': 'Animal 1'},
-        ]
-        self.assertResultsEqual(graphql_query, parameters, backend_name, expected_results)
-
-    @use_all_backends()
-    @integration_fixtures
-    def test_filter_on_null(self, backend_name):
-        graphql_query = '''
-        {
-            Animal {
-                name @output(out_name: "animal_name")
-                net_worth @filter(op_name: "=", value: ["$net_worth"])
-            }
-        }
-        '''
-        if backend_name != test_backend.MSSQL:
-            return
-        parameters = {
-            'net_worth': None,
-        }
-        expected_results = [
-            {'animal_name': 'Animal 5'},
         ]
         self.assertResultsEqual(graphql_query, parameters, backend_name, expected_results)
 
