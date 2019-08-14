@@ -7,12 +7,11 @@ import string
 
 import funcy
 from graphql import GraphQLList, GraphQLNonNull, GraphQLString, is_type
-from graphql.language.ast import InlineFragment
 from graphql.type.definition import GraphQLInterfaceType, GraphQLObjectType, GraphQLUnionType
 import six
 
 from ..exceptions import GraphQLCompilationError
-from ..schema import TYPENAME_META_FIELD_NAME
+from ..schema import INBOUND_EDGE_FIELD_PREFIX, OUTBOUND_EDGE_FIELD_PREFIX, is_vertex_field_name
 
 
 # These are the Java (OrientDB) representations of the ISO-8601 standard date and datetime formats.
@@ -20,9 +19,6 @@ STANDARD_DATE_FORMAT = 'yyyy-MM-dd'
 STANDARD_DATETIME_FORMAT = 'yyyy-MM-dd\'T\'HH:mm:ssX'
 
 VARIABLE_ALLOWED_CHARS = frozenset(six.text_type(string.ascii_letters + string.digits + '_'))
-
-OUTBOUND_EDGE_FIELD_PREFIX = 'out_'
-INBOUND_EDGE_FIELD_PREFIX = 'in_'
 
 OUTBOUND_EDGE_DIRECTION = 'out'
 INBOUND_EDGE_DIRECTION = 'in'
@@ -40,24 +36,6 @@ def get_only_element_from_collection(one_element_collection):
         raise AssertionError(u'Expected a collection with exactly one element, but got: {}'
                              .format(one_element_collection))
     return funcy.first(one_element_collection)
-
-
-def get_ast_field_name(ast):
-    """Return the normalized field name for the given AST node."""
-    replacements = {
-        # We always rewrite the following field names into their proper underlying counterparts.
-        TYPENAME_META_FIELD_NAME: '@class'
-    }
-    base_field_name = ast.name.value
-    normalized_name = replacements.get(base_field_name, base_field_name)
-    return normalized_name
-
-
-def get_ast_field_name_or_none(ast):
-    """Return the field name for the AST node, or None if the AST is an InlineFragment."""
-    if isinstance(ast, InlineFragment):
-        return None
-    return get_ast_field_name(ast)
 
 
 def get_field_type_from_schema(schema_type, field_name):
@@ -98,6 +76,13 @@ def strip_non_null_from_type(graphql_type):
     return graphql_type
 
 
+def strip_non_null_and_list_from_type(graphql_type):
+    """Return the GraphQL type stripped of its GraphQLNonNull and GraphQLList annotations."""
+    while isinstance(graphql_type, (GraphQLNonNull, GraphQLList)):
+        graphql_type = graphql_type.of_type
+    return graphql_type
+
+
 def get_edge_direction_and_name(vertex_field_name):
     """Get the edge direction and name from a non-root vertex field name."""
     edge_direction = None
@@ -114,14 +99,6 @@ def get_edge_direction_and_name(vertex_field_name):
     validate_safe_string(edge_name)
 
     return edge_direction, edge_name
-
-
-def is_vertex_field_name(field_name):
-    """Return True if the field's name indicates it is a non-root vertex field."""
-    return (
-        field_name.startswith(OUTBOUND_EDGE_FIELD_PREFIX) or
-        field_name.startswith(INBOUND_EDGE_FIELD_PREFIX)
-    )
 
 
 def is_vertex_field_type(graphql_type):
@@ -169,37 +146,60 @@ def get_uniquely_named_objects_by_name(object_list):
 
 
 def safe_quoted_string(value):
-    """Return the provided string, surrounded by single quotes. Unsafe strings cause exceptions."""
+    """Return the provided string, surrounded by single quotes. Ensure string is safe."""
     validate_safe_string(value)
     return u'\'{}\''.format(value)
 
 
-def validate_safe_string(value):
-    """Ensure the provided string does not have illegal characters."""
+def safe_or_special_quoted_string(value):
+    """Return the provided string, surrounded by single quotes. Ensure string is safe or special."""
+    validate_safe_or_special_string(value)
+    return u'\'{}\''.format(value)
+
+
+def validate_safe_or_special_string(value, value_description='string'):
+    """Ensure the string does not have illegal characters or is in a set of allowed strings."""
     # The following strings are explicitly allowed, despite having otherwise-illegal chars.
     legal_strings_with_special_chars = frozenset({'@rid', '@class', '@this', '%'})
+    if value not in legal_strings_with_special_chars:
+        validate_safe_string(value, value_description=value_description)
 
-    if not isinstance(value, six.string_types):
-        raise TypeError(u'Expected string value, got: {} {}'.format(
-            type(value).__name__, value))
 
+def validate_safe_string(value, value_description='string'):
+    """Ensure that the provided string not have illegal characters."""
     if not value:
-        raise GraphQLCompilationError(u'Empty strings are not allowed!')
+        raise GraphQLCompilationError(u'Empty {}s are not allowed!'.format(value_description))
 
     if value[0] in string.digits:
-        raise GraphQLCompilationError(u'String values cannot start with a digit: {}'.format(value))
+        raise GraphQLCompilationError(u'Encountered invalid {}: {}. It cannot start with a '
+                                      u'digit.'.format(value_description, value))
 
-    if not set(value).issubset(VARIABLE_ALLOWED_CHARS) and \
-            value not in legal_strings_with_special_chars:
-        raise GraphQLCompilationError(u'Encountered illegal characters in string: {}'.format(value))
+    # set(value) is used instead of frozenset(value) to avoid printing 'frozenset' in error message.
+    disallowed_chars = set(value) - VARIABLE_ALLOWED_CHARS
+    if disallowed_chars:
+        raise GraphQLCompilationError(u'Encountered illegal characters {} in {}: {}. It is only '
+                                      u'allowed to have upper and lower case letters, '
+                                      u'digits and underscores.'
+                                      .format(disallowed_chars, value_description, value))
 
 
-def validate_output_name(value):
+def validate_runtime_argument_name(name):
+    """Ensure that the provided string is valid for use as a runtime argument name."""
+    validate_safe_string(name, value_description='runtime argument name')
+
+
+def validate_tagged_argument_name(name):
+    """Ensure that provided string is valid for use as a tagged argument name"""
+    validate_safe_string(name, value_description='tagged argument name')
+
+
+def validate_output_name(name):
     """Ensure that the provided string is valid for use as an output name."""
     internal_name_prefix = u'___'
-    if value.startswith(internal_name_prefix):
+    if name.startswith(internal_name_prefix):
         raise GraphQLCompilationError(
             u'The prefix "___" (three underscores) for output names is reserved by the compiler.')
+    validate_safe_string(name, value_description='output name')
 
 
 def validate_edge_direction(edge_direction):
